@@ -211,6 +211,11 @@ export const DOMAIN_GROUPS: readonly DomainGroup[] = [
     summary: "离线检索 EasyEDA Pro 扩展 API 文档（search / get）",
     load: async () => (await import("./apidocs/cli.ts")).runApiCommand,
   },
+  {
+    name: "epro2",
+    summary: "离线解析 .epro2 工程：网表、PCB 几何、一致性报告、版本对比",
+    load: async () => (await import("./epro2/cli.ts")).runEpro2Command,
+  },
 ];
 
 /** cdp 命令组里由 CDP 客户端（src/cdp）处理的动作，其余仍归启动器。 */
