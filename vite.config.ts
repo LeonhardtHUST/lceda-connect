@@ -1,7 +1,7 @@
 import { defineConfig } from "vite-plus";
 
-// assets/ 下是从源仓库原样收进来的数据与脚本，不参与格式化与 lint。
-const VENDORED = ["assets/**", "dist/**", ".vite-hooks/_/**"];
+// assets/ 与 docs/vendor/ 下是从源仓库原样收进来的数据、脚本与文档，不参与格式化与 lint。
+const VENDORED = ["assets/**", "docs/vendor/**", "dist/**", ".vite-hooks/_/**"];
 
 export default defineConfig({
   pack: {
