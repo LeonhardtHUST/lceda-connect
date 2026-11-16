@@ -5,7 +5,15 @@ const VENDORED = ["assets/**", "docs/vendor/**", "dist/**", ".vite-hooks/_/**"];
 
 export default defineConfig({
   pack: {
-    entry: ["src/index.ts", "src/cli.ts", "src/cli-cdp.ts", "src/cli-bridge.ts", "src/cli-mcp.ts"],
+    entry: [
+      "src/index.ts",
+      "src/cli.ts",
+      "src/cli-cdp.ts",
+      "src/cli-bridge.ts",
+      "src/cli-mcp.ts",
+      // 内置 AI Bridge 服务，lceda-bridge 找不到外部脚本时用它
+      "src/cli-bridge-server.ts",
+    ],
     format: "esm",
     platform: "node",
     target: "node20",

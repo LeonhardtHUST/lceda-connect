@@ -31,6 +31,7 @@
     ".": "./dist/index.mjs",
     "./cli": "./dist/cli.mjs",
     "./cli-bridge": "./dist/cli-bridge.mjs",
+    "./cli-bridge-server": "./dist/cli-bridge-server.mjs",
     "./cli-cdp": "./dist/cli-cdp.mjs",
     "./cli-mcp": "./dist/cli-mcp.mjs",
     "./package.json": "./package.json"
