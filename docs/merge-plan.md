@@ -31,7 +31,7 @@
 | 领域       | 工具                                                                                                                                                                                                               |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 连接       | `lceda_status`、`cdp_discover`、`cdp_targets`、`cdp_eval`、`cdp_screenshot`、`bridge_status`、`bridge_windows`、`bridge_execute`                                                                                   |
-| 编辑器动词 | `eda_read_board`、`eda_run_drc`、`eda_doc_list`、`eda_doc_open`                                                                                                                                                    |
+| 编辑器动词 | `eda_read_board`、`eda_run_drc`、`eda_board_digest`、`eda_doc_info`（文档列表与切换由 `cdp_doc_list` / `cdp_doc_open` 提供）                                                                                       |
 | API 文档   | `api_search`、`api_get`                                                                                                                                                                                            |
 | 格式       | `format_list_types`、`format_get_primitive`、`format_validate_record`                                                                                                                                              |
 | 工程文件   | `epro2_inspect`、`epro2_schematic_nets`、`epro2_pcb_netlist`、`epro2_pcb_geometry`、`epro2_crosscheck`、`epro2_report`、`epro2_diff`、`eprj3_inspect`、`eprj3_validate`、`eprj3_netlist`、`eprj3_build`（sidecar） |
@@ -43,7 +43,7 @@
 ## 构建与工程化
 
 - 新依赖：`@modelcontextprotocol/sdk`、`zod`、`ws`（运行时，放 `dependencies`，tsdown 自动外部化）；`@commitlint/cli`、`@commitlint/config-conventional`（dev）。
-- `vite.config.ts`：新增 pack 入口 `src/cli-mcp.ts`、`src/bridge-server.ts`；`fmt/lint.ignorePatterns` 排除 `assets/**`；`files` 加入 `assets`。
+- `vite.config.ts`：新增 pack 入口 `src/cli-mcp.ts`、`src/cli-bridge-server.ts`；`fmt/lint.ignorePatterns` 排除 `assets/**`；`files` 加入 `assets`。
 - commitlint：`commitlint.config.mjs` 照搬参考模板（config-conventional + 中文简述规则）；`.vite-hooks/commit-msg` 调用 commitlint，`prepare: vp config` 自动安装钩子，`.gitattributes` 强制钩子脚本 LF。
 
 ## 提交顺序（逻辑单元）
@@ -65,3 +65,12 @@
 - 许可证：本仓库 `LICENSE` 是 GPL-3.0 全文，`package.json` 与 README 写 MIT；源仓库多为 MIT，easyeda-api-skill 与 easyeda-client-cli 仓库内无 LICENSE 文件。本次不改 LICENSE，在 `THIRD_PARTY_NOTICES.md` 记录来源与许可，由仓库所有者决定最终许可。
 - 官方客户端已自带 `lceda-pro --mcp`。本项目的差异点是：接入正在编辑的 GUI 实例（bridge + CDP）、离线工程文件解析与仿真、离线 API/格式检索。
 - 写入与提交由主 Agent 统一执行；实现 Worker 只在分配的目录内写文件，不做任何 git 操作。
+
+## 执行结果（2026-11-17）
+
+- 9 个源仓库全部按上表处置完毕；MCP 共 51 个工具，CLI 新增 api、format、epro2、eprj3、sim、eda 六个命令组，cdp/bridge 原有动作与选项不变。
+- `vp check` 全过；`vp test` 306 通过、1 跳过（未装 ngspice 时的分支）；`vp pack` 成功且不改动 package.json。
+- 与方案的出入：
+  - ngspice-sim 的 override、行为级模型、IBIS 三层暂未移植，走 sidecar；网表生成遇到无模型 IC 时排除，strict 模式报 `UNMAPPED_IC`。
+  - eprj3 的 `eval.js`、`make-board.js` 依赖源仓库 `test/capture`，没有随 sidecar 收入，已从白名单排除。
+  - leonskill-easyeda-connect 的离线布局布线求解器、丝印系列、规则门禁未移植，原因与后续路线见 `assets/skills/easyeda-connect/SOURCE.md`。
