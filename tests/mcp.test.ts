@@ -33,6 +33,22 @@ test("工具名唯一且都有说明", () => {
   }
 });
 
+test("每个领域的工具都已注册", () => {
+  const names = new Set(allTools().map((t) => t.name));
+  for (const expected of [
+    "lceda_info",
+    "cdp_eval",
+    "bridge_execute",
+    "lceda_status",
+    "api_search",
+    "format_validate_record",
+    "epro2_report",
+    "sim_run",
+  ]) {
+    expect(names.has(expected), expected).toBe(true);
+  }
+});
+
 test("MCP 握手后能列出并调用 lceda_info", async () => {
   const client = await connect();
   const { tools } = await client.listTools();

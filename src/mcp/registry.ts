@@ -17,9 +17,11 @@ export function allTools(): ToolDef[] {
     ...coreTools,
     ...cdpTools,
     ...bridgeTools,
+    ...edaTools,
     ...apiDocsTools,
-    ...epro2Tools,
     ...formatTools,
+    ...epro2Tools,
+    ...simTools,
   ];
   const seen = new Set<string>();
   for (const tool of tools) {
