@@ -1,9 +1,36 @@
 # lceda-connect
 
-嘉立创EDA专业版（EasyEDA Pro）连接工具箱。把散落在 `lceda-cdp.ps1`、`lceda-bridge.ps1` 里的两套能力收进一个 npm 包，`npx` / `vpx` 直接可用：
+嘉立创EDA专业版（EasyEDA Pro）的 MCP 服务与命令行工具。一个 npm 包，`npx` / `vpx` 直接可用。它由 9 个仓库合并而来（来源见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，合并方案见 [docs/merge-plan.md](docs/merge-plan.md)）。
 
-- **`cdp`** —— 带 Chrome DevTools Protocol 调试端口启动客户端，并管理这个受管实例（`start` / `ensure` / `status` / `endpoint` / `stop`）。
-- **`bridge`** —— EasyEDA AI Bridge 服务管理：后台守护、崩溃自动重启、健康检查、日志、环境自检（`start` / `stop` / `restart` / `status` / `logs` / `doctor` / `run`）。
+| 命令组   | 做什么                                                                                              |
+| -------- | --------------------------------------------------------------------------------------------------- |
+| `cdp`    | 带调试端口启动客户端并管理实例；连上后可发现端点、列页面、求值、截图、切换文档                      |
+| `bridge` | AI Bridge 服务管理（守护、自动重启、日志、自检），内置服务端；可列窗口、在编辑器里执行 `eda.*` 代码 |
+| `eda`    | 编辑器动词：双通道自检、读板、DRC、板指纹、自动布线、动词台账检索                                   |
+| `api`    | 离线检索扩展 API 文档（422 篇参考）                                                                 |
+| `format` | 文件格式类型检索、图元字段说明、记录校验、示例                                                      |
+| `epro2`  | 离线解析 `.epro2` 工程：双侧网表、PCB 几何、一致性报告、两版对比                                    |
+| `eprj3`  | 读取与校验 `.eprj3` 文件夹工程、导出网表，调用建工程与门禁脚本                                      |
+| `sim`    | ngspice 仿真：网表生成、运行、raw 解析、指标、叠层估算、Touchstone                                  |
+| `mcp`    | 以 stdio 运行 MCP 服务，上述能力都以 MCP 工具形式提供                                               |
+
+## MCP 服务
+
+在 MCP 客户端里这样配置：
+
+```json
+{
+  "mcpServers": {
+    "lceda": { "command": "npx", "args": ["-y", "lceda-connect", "mcp"] }
+  }
+}
+```
+
+全局安装后也可以直接写 `"command": "lceda-mcp"`。`lceda-connect mcp tools` 列出全部工具。约定：
+
+- 写操作（在编辑器里执行代码、自动布线、建工程、调用外部脚本）默认不执行，要传 `confirm: true`。
+- 单个结果超过 64 KiB 会截断，并在 `_meta` 里注明原始大小；大产物请用 `outDir` 落盘。
+- 各源仓库的 SKILL.md 与 references 以 `lceda://skills/...` resource 提供，也可用 `skill_docs` 工具读取。
 
 ## 安装
 
@@ -80,6 +107,23 @@ lceda-bridge stop
 
 服务契约（与 `bridge-server.mjs` 一致）：端口区间 `49620-49629`，健康检查 `GET /health` 返回 `service: "easyeda-bridge"`，日志 `%LOCALAPPDATA%\lceda-bridge\bridge.log`（超过 5 MB 滚存为 `.1`），状态 `state.json` 记录守护进程 pid / node / 脚本 / 启动时间。
 
+找不到外部 `bridge-server.mjs` 时，`start` / `run` 会改用随包发布的内置服务 `dist/cli-bridge-server.mjs`，协议与原脚本一致，不需要另装 `ws`。
+
+### 其他命令组
+
+每个命令组都带 `--help`，并支持 `--json`：
+
+```bash
+lceda-connect cdp eval --expr "document.title"      # 连到已开调试端口的客户端
+lceda-connect bridge exec --code "return await eda.dmt_Project.getCurrentProjectInfo()"
+lceda-connect eda status                            # bridge / CDP 两条通道是否可用
+lceda-connect api search pcb_PrimitiveVia.create
+lceda-connect format validate --doc PCB VIA '{"x":0,"y":0}'
+lceda-connect epro2 analyze board.epro2 --out ./eda-out
+lceda-connect eprj3 validate ./my-project
+lceda-connect sim run deck.cir --mode tran --out ./sim-out
+```
+
 ### 通用选项
 
 | 选项                   | 适用             | 说明                                                                |
@@ -110,6 +154,10 @@ lceda-bridge stop
 | `LCEDA_NODE`           | 指定 node.exe，跳过自动探测 | 自动探测                                   |
 | `LCEDA_BRIDGE_SCRIPT`  | 指定 `bridge-server.mjs`    | 自动探测                                   |
 | `LCEDA_BRIDGE_RUNTIME` | bridge 运行态目录           | `%LOCALAPPDATA%\lceda-bridge`              |
+| `EASYEDA_CDP_TIMEOUT`  | CDP 单次调用超时（秒）      | `20`                                       |
+| `NGSPICE_BIN`          | ngspice 可执行文件          | 自动探测                                   |
+| `LCEDA_PYTHON`         | sidecar 使用的 Python       | 自动探测                                   |
+| `LCEDA_CONNECT_ASSETS` | 覆盖 assets 目录            | 包内 `assets/`                             |
 
 优先级：命令行参数 > 环境变量 > 内置默认值。
 
@@ -157,19 +205,27 @@ vp check          # 格式化 + lint + 类型检查
 
 ```
 src/
-  cli.ts / cli-cdp.ts / cli-bridge.ts   三个 bin 入口（共用 main）
-  main.ts                              命令组/动作/选项分发与帮助
-  commands/                            cdp、bridge 两套子命令实现
-  core/                                配置、进程、网络探测、日志、node 解析、参数解析
-tests/                                 单元测试（vite-plus/test）
+  cli*.ts                bin 入口（lceda-connect / lceda-cdp / lceda-bridge / lceda-mcp / 内置 bridge 服务）
+  main.ts                命令组分发与帮助
+  commands/              cdp 启动器、bridge 服务管理
+  core/                  配置、进程、网络探测、日志、参数解析、assets 定位
+  mcp/                   MCP 服务、工具注册表、结果截断
+  cdp/ bridge/ eda/      编辑器连接与动词
+  apidocs/ format/       API 文档检索、格式校验
+  epro2/ eprj3/ sim/     工程文件解析、ngspice 仿真
+assets/                  随包发布的知识文档、Schema、API 参考与 sidecar 脚本
+docs/                    合并方案、eprj3 文档、官方 CLI 参考
+tests/                   单元与集成测试（vite-plus/test）
 ```
+
+提交信息按 Conventional Commits 写，简述必须含汉字、不超过 50 字、结尾不加句号或分号。`pnpm install` 时会通过 `prepare`（`vp config`）装好 commit-msg 钩子，由 commitlint 校验；也可以手动执行 `pnpm run hooks:install`。
 
 ## 注意
 
 - `lceda-cdp stop --yes` 会直接结束客户端进程，**未保存的工程会丢**；不加 `--yes` 只做提示。
 - bridge 的 `stop` 会连同进程树一起清理，EDA 里的扩展会断开，下次使用前要在扩展里点一次「重新连接」。
-- 只对 Windows 生效（客户端是 Windows 桌面程序）。
+- `cdp` 启动器与 `bridge` 服务管理只对 Windows 生效（客户端是 Windows 桌面程序）；工程文件解析、格式校验、文档检索与仿真不依赖平台。
 
 ## License
 
-MIT
+`package.json` 声明 MIT，但仓库根目录的 `LICENSE` 是 GPL-3.0 全文，两者不一致，待所有者确认。合并进来的第三方内容及其许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

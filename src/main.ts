@@ -96,7 +96,7 @@ export { packageVersion };
 export function globalHelp(): string[] {
   return [
     "",
-    paint.cyan("  lceda-connect  --  嘉立创EDA专业版 (EasyEDA Pro) 连接工具箱"),
+    paint.cyan("  lceda-connect  --  嘉立创EDA专业版 (EasyEDA Pro) MCP 服务与命令行工具"),
     paint.gray(`  ${hr()}`),
     "  用法: lceda-connect <命令组> <动作> [选项]",
     "",
@@ -109,6 +109,7 @@ export function globalHelp(): string[] {
     paint.white("  等价写法:"),
     "    lceda-cdp <动作>        等价于 lceda-connect cdp <动作>",
     "    lceda-bridge <动作>     等价于 lceda-connect bridge <动作>",
+    "    lceda-mcp               等价于 lceda-connect mcp serve",
     "",
     paint.white("  例子:"),
     "    npx lceda-connect cdp start",
