@@ -1,0 +1,52 @@
+{
+  "name": "lceda-connect",
+  "version": "0.1.0",
+  "description": "嘉立创EDA专业版 (EasyEDA Pro) 连接工具箱：CDP 调试端口启动器 + AI Bridge 服务管理，npx/vpx 直接可用。",
+  "keywords": [
+    "ai-bridge",
+    "cdp",
+    "chrome-devtools-protocol",
+    "cli",
+    "easyeda",
+    "easyeda-pro",
+    "lceda",
+    "mcp"
+  ],
+  "license": "MIT",
+  "author": "Leon",
+  "bin": {
+    "lceda-bridge": "./dist/cli-bridge.mjs",
+    "lceda-cdp": "./dist/cli-cdp.mjs",
+    "lceda-connect": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./cli": "./dist/cli.mjs",
+    "./cli-bridge": "./dist/cli-bridge.mjs",
+    "./cli-cdp": "./dist/cli-cdp.mjs",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check",
+    "prepublishOnly": "vp run build"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vite-plus": "^1.6.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.6.0"
+  },
+  "engines": {
+    "node": ">=20.11"
+  }
+}
