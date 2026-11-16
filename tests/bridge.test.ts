@@ -11,13 +11,16 @@ import {
   buildBridgeChildEnv,
   buildStatus,
   buildSuperviseCommand,
+  builtinBridgeScript,
   classifyCommandLine,
   collectStopTargets,
   formatStatusJson,
+  isBuiltinBridgeScript,
   localTimestamp,
   localTimestampSeconds,
   readBridgeState,
   resolveBridgeScript,
+  resolveBridgeScriptWithBuiltin,
   resolveNodeFor,
   rotateLogIfNeeded,
   runBridgeAction,
@@ -530,4 +533,54 @@ test("runBridgeAction 的 help 与未知动作", async () => {
   const badIo = createMemoryIo();
   expect(await runBridgeAction("nope" as BridgeAction, OPTIONS, { cfg, io: badIo, env })).toBe(1);
   expect(badIo.lines.join("\n")).toContain("不认识的命令");
+});
+
+// ─── 内置服务回退 ────────────────────────────────────────────────────
+test("内置 bridge 脚本回退：外部候选优先，找不到时用 dist/cli-bridge-server.mjs", () => {
+  const home = tempDir("lceda-bridge-builtin-");
+  try {
+    const env = { USERPROFILE: home };
+    const cfg = loadConfig({ ...env, LOCALAPPDATA: path.join(home, "AppData", "Local") }, {});
+    const builtin = path.join(home, "dist", "cli-bridge-server.mjs");
+
+    // 外部与内置都没有 → null
+    expect(resolveBridgeScriptWithBuiltin(cfg.bridge, env, builtin)).toBeNull();
+
+    // 只有内置 → 用它，并标记 builtin（doctor 靠它跳过 ws 检查）
+    fs.mkdirSync(path.dirname(builtin), { recursive: true });
+    fs.writeFileSync(builtin, "#!/usr/bin/env node\n", "utf8");
+    expect(resolveBridgeScriptWithBuiltin(cfg.bridge, env, builtin)).toEqual({
+      path: builtin,
+      builtin: true,
+    });
+
+    // 外部技能里的脚本仍然优先
+    const workbuddy = path.join(home, ".workbuddy", "skills", "easyeda-api", "scripts");
+    fs.mkdirSync(workbuddy, { recursive: true });
+    const external = path.join(workbuddy, "bridge-server.mjs");
+    fs.writeFileSync(external, "", "utf8");
+    expect(resolveBridgeScriptWithBuiltin(cfg.bridge, env, builtin)).toEqual({
+      path: external,
+      builtin: false,
+    });
+
+    // LCEDA_BRIDGE_SCRIPT / --script 直接指向内置路径时也按内置处理
+    expect(
+      resolveBridgeScriptWithBuiltin({ ...cfg.bridge, bridgeScript: builtin }, env, builtin),
+    ).toEqual({ path: builtin, builtin: true });
+    expect(resolveBridgeScript(cfg.bridge, { ...env, LCEDA_BRIDGE_SCRIPT: builtin })).toBe(builtin);
+
+    expect(isBuiltinBridgeScript(builtin, builtin)).toBe(true);
+    expect(isBuiltinBridgeScript(builtin.toUpperCase(), builtin)).toBe(true);
+    expect(isBuiltinBridgeScript(external, builtin)).toBe(false);
+    expect(isBuiltinBridgeScript(builtin, null)).toBe(false);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("builtinBridgeScript 指向包内 dist/cli-bridge-server.mjs", () => {
+  const script = builtinBridgeScript();
+  expect(script).not.toBeNull();
+  expect(script?.endsWith(path.join("dist", "cli-bridge-server.mjs"))).toBe(true);
 });

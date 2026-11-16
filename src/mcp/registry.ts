@@ -1,3 +1,5 @@
+import { apiDocsTools } from "../apidocs/mcpTools.ts";
+import { bridgeTools } from "../bridge/mcpTools.ts";
 import { cdpTools } from "../cdp/mcpTools.ts";
 import { coreTools } from "./coreTools.ts";
 import type { ToolDef } from "./types.ts";
@@ -7,7 +9,7 @@ import type { ToolDef } from "./types.ts";
  * 新增领域：在对应目录写 mcpTools.ts 导出 `xxxTools: ToolDef[]`，再加到下面。
  */
 export function allTools(): ToolDef[] {
-  const tools = [...coreTools, ...cdpTools];
+  const tools = [...coreTools, ...cdpTools, ...bridgeTools, ...apiDocsTools];
   const seen = new Set<string>();
   for (const tool of tools) {
     if (seen.has(tool.name)) throw new Error(`MCP 工具重名：${tool.name}`);

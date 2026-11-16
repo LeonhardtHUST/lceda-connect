@@ -166,8 +166,11 @@ export function bridgeHelp(): string[] {
     "    restart    stop + start",
     "    status     看状态（默认动作）",
     "    logs       看日志",
-    "    doctor     环境自检（node 候选、脚本、ws 依赖、端口）",
+    "    doctor     环境自检（node 候选、脚本、ws 依赖、端口；找不到外部脚本时用内置服务）",
     "    run        前台运行（调试用）",
+    "    windows    列出已连接的编辑器窗口",
+    "    select     切换活动窗口",
+    "    exec       在编辑器里执行 eda.* 代码（--code / --file）",
     "    help       这个帮助",
     "",
     paint.white("  选项:"),
@@ -202,7 +205,13 @@ export interface DomainGroup {
  * 由合并进来的各源仓库提供的命令组。按需动态加载，避免 cdp/bridge 这类常用命令
  * 启动时把所有领域模块都读进来。
  */
-export const DOMAIN_GROUPS: readonly DomainGroup[] = [];
+export const DOMAIN_GROUPS: readonly DomainGroup[] = [
+  {
+    name: "api",
+    summary: "离线检索 EasyEDA Pro 扩展 API 文档（search / get）",
+    load: async () => (await import("./apidocs/cli.ts")).runApiCommand,
+  },
+];
 
 /** cdp 命令组里由 CDP 客户端（src/cdp）处理的动作，其余仍归启动器。 */
 export const CDP_CLIENT_ACTIONS: readonly string[] = [
@@ -213,6 +222,9 @@ export const CDP_CLIENT_ACTIONS: readonly string[] = [
   "shot",
   "docs",
 ];
+
+/** bridge 命令组里由 bridge 客户端（src/bridge）处理的动作，其余仍归服务管理。 */
+export const BRIDGE_CLIENT_ACTIONS: readonly string[] = ["windows", "select", "exec"];
 
 export function mcpHelp(): string[] {
   return [
@@ -319,6 +331,10 @@ export async function main(options: MainOptions): Promise<number> {
   if (group === "cdp" && CDP_CLIENT_ACTIONS.includes(clientAction)) {
     const { runCdpClientCommand } = await import("./cdp/cli.ts");
     return await runCdpClientCommand(tail, io, env);
+  }
+  if (group === "bridge" && BRIDGE_CLIENT_ACTIONS.includes(clientAction)) {
+    const { runBridgeClientCommand } = await import("./bridge/cli.ts");
+    return await runBridgeClientCommand(tail, io, env);
   }
 
   const helpRequested =

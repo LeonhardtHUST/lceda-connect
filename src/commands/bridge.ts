@@ -2,6 +2,7 @@ import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import os from "node:os";
 import path from "node:path";
 
+import { packageRoot } from "../core/assets.ts";
 import { homeDir, type BridgeConfig } from "../core/config.ts";
 import {
   ensureDir,
@@ -227,7 +228,7 @@ export function bridgeScriptCandidates(
   return candidates;
 }
 
-/** 找到第一个真实存在的 bridge-server.mjs。 */
+/** 找到第一个真实存在的 bridge-server.mjs（只看外部脚本，保持原有语义）。 */
 export function resolveBridgeScript(
   bridge: BridgeConfig,
   env: NodeJS.ProcessEnv = process.env,
@@ -235,6 +236,57 @@ export function resolveBridgeScript(
   for (const candidate of bridgeScriptCandidates(env, bridge.bridgeScript)) {
     if (exists(candidate)) return candidate;
   }
+  return null;
+}
+
+/**
+ * 随包发布的内置 bridge 服务（src/cli-bridge-server.ts 的打包产物）。
+ * 外部脚本一个都找不到时用它——不再要求用户另装 easyeda-api 技能与 ws 依赖。
+ */
+export function builtinBridgeScript(): string | null {
+  try {
+    return path.join(packageRoot(), "dist", "cli-bridge-server.mjs");
+  } catch {
+    // packageRoot 只在包结构异常时失败，内置服务视为不可用
+    return null;
+  }
+}
+
+export interface BridgeScriptResolution {
+  path: string;
+  /** true 表示这是内置服务（doctor 的 ws 检查要跳过）。 */
+  builtin: boolean;
+}
+
+function samePath(left: string, right: string): boolean {
+  return path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
+}
+
+/** 判断一个脚本路径是不是内置服务（大小写不敏感，Windows 路径）。 */
+export function isBuiltinBridgeScript(
+  scriptPath: string,
+  builtinPath: string | null = builtinBridgeScript(),
+): boolean {
+  return builtinPath !== null && samePath(scriptPath, builtinPath);
+}
+
+/**
+ * 服务脚本解析顺序：LCEDA_BRIDGE_SCRIPT / --script → 旧的外部候选 → 内置 dist/cli-bridge-server.mjs。
+ * 显式指定的脚本即使等于内置路径，也按内置处理（supervise 会把它经环境变量传下来）。
+ */
+export function resolveBridgeScriptWithBuiltin(
+  bridge: BridgeConfig,
+  env: NodeJS.ProcessEnv = process.env,
+  builtinPath: string | null = builtinBridgeScript(),
+): BridgeScriptResolution | null {
+  for (const candidate of bridgeScriptCandidates(env, bridge.bridgeScript)) {
+    if (!exists(candidate)) continue;
+    return {
+      path: candidate,
+      builtin: builtinPath !== null && samePath(candidate, builtinPath),
+    };
+  }
+  if (builtinPath !== null && exists(builtinPath)) return { path: builtinPath, builtin: true };
   return null;
 }
 
@@ -685,7 +737,7 @@ async function runStatus(options: BridgeOptions, ctx: CommandContext): Promise<n
   const saved = readBridgeState(bridge.stateFile);
   const supervisorPid = saved ? saved.supervisorPid : 0;
   const node = await resolveNodeFor(bridge, ctx.env);
-  const script = resolveBridgeScript(bridge, ctx.env);
+  const script = resolveBridgeScriptWithBuiltin(bridge, ctx.env);
 
   const status = buildStatus({
     listeners,
@@ -694,7 +746,7 @@ async function runStatus(options: BridgeOptions, ctx: CommandContext): Promise<n
     supervisorAlive: supervisorPid > 0 ? isPidAlive(supervisorPid) : false,
     nodePath: node ? node.path : null,
     nodeVersion: node ? node.version : "",
-    scriptPath: script,
+    scriptPath: script ? script.path : null,
     logFile: bridge.logFile,
     serviceId: bridge.serviceId,
   });
@@ -807,9 +859,12 @@ async function runStart(options: BridgeOptions, ctx: CommandContext): Promise<nu
     return 1;
   }
 
-  const script = resolveBridgeScript(bridge, ctx.env);
+  const script = resolveBridgeScriptWithBuiltin(bridge, ctx.env);
   if (!script) {
-    fail(io, "找不到 bridge-server.mjs，用环境变量 LCEDA_BRIDGE_SCRIPT 指定。");
+    fail(
+      io,
+      "找不到 bridge-server.mjs，也没有内置服务（dist/cli-bridge-server.mjs）。用环境变量 LCEDA_BRIDGE_SCRIPT 指定。",
+    );
     return 1;
   }
 
@@ -818,12 +873,12 @@ async function runStart(options: BridgeOptions, ctx: CommandContext): Promise<nu
   io.out("");
   io.out(paint.cyan("  正在后台启动 bridge ..."));
   io.out(paint.gray(`    node   : ${node.path}`));
-  io.out(paint.gray(`    script : ${script}`));
+  io.out(paint.gray(`    script : ${script.builtin ? `${script.path}（内置）` : script.path}`));
   io.out(paint.gray(`    log    : ${bridge.logFile}`));
 
   const command = buildSuperviseCommand(selfEntryPath(), node.path, options);
   const child = spawnDetached(command.file, command.args, {
-    env: buildBridgeChildEnv(ctx.env, node.path, script),
+    env: buildBridgeChildEnv(ctx.env, node.path, script.path),
   });
   const supervisorPid = child.pid ?? 0;
 
@@ -915,21 +970,24 @@ async function runRun(options: BridgeOptions, ctx: CommandContext): Promise<numb
     reportMissingNode(io);
     return 1;
   }
-  const script = resolveBridgeScript(bridge, ctx.env);
+  const script = resolveBridgeScriptWithBuiltin(bridge, ctx.env);
   if (!script) {
-    fail(io, "找不到 bridge-server.mjs，用环境变量 LCEDA_BRIDGE_SCRIPT 指定。");
+    fail(
+      io,
+      "找不到 bridge-server.mjs，也没有内置服务（dist/cli-bridge-server.mjs）。用环境变量 LCEDA_BRIDGE_SCRIPT 指定。",
+    );
     return 1;
   }
 
   ensureDir(bridge.runtimeDir);
-  const childEnv = buildBridgeChildEnv(ctx.env, node.path, script);
+  const childEnv = buildBridgeChildEnv(ctx.env, node.path, script.path);
 
   io.out("");
   io.out(paint.cyan("  ============================================================"));
   io.out(paint.cyan("   EasyEDA Bridge Server  (前台运行)"));
   io.out(paint.cyan("  ============================================================"));
   io.out(paint.gray(`   node   : ${node.path}`));
-  io.out(paint.gray(`   script : ${script}`));
+  io.out(paint.gray(`   script : ${script.builtin ? `${script.path}（内置）` : script.path}`));
   io.out("");
   io.out(paint.gray(`   health : http://${bridge.bindHost}:${bridge.portFirst}/health`));
   io.out(paint.gray(`   ports  : ${bridge.portFirst}-${bridge.portLast}（第一个空闲的会被占用）`));
@@ -941,7 +999,7 @@ async function runRun(options: BridgeOptions, ctx: CommandContext): Promise<numb
 
   for (;;) {
     io.out(paint.gray(`[${localTimestamp()}] starting bridge ...`));
-    const code = await runForeground(node.path, script, childEnv);
+    const code = await runForeground(node.path, script.path, childEnv);
     io.out("");
     io.out(paint.yellow(`[${localTimestamp()}] bridge exited (code ${code})`));
     if (options.once) return code;
@@ -955,7 +1013,7 @@ async function runRun(options: BridgeOptions, ctx: CommandContext): Promise<numb
 async function runSupervise(options: BridgeOptions, ctx: CommandContext): Promise<number> {
   const bridge = ctx.cfg.bridge;
   let node = await resolveNodeFor(bridge, ctx.env);
-  const script = resolveBridgeScript(bridge, ctx.env);
+  const script = resolveBridgeScriptWithBuiltin(bridge, ctx.env);
 
   if (!script || !node) {
     appendLog(
@@ -970,7 +1028,7 @@ async function runSupervise(options: BridgeOptions, ctx: CommandContext): Promis
   writeBridgeState(bridge.stateFile, {
     supervisorPid: process.pid,
     node: node.path,
-    script,
+    script: script.path,
     startedAt: localTimestampSeconds(),
     log: bridge.logFile,
   });
@@ -999,9 +1057,9 @@ async function runSupervise(options: BridgeOptions, ctx: CommandContext): Promis
 
       const code = await runToLog(
         node.path,
-        script,
+        script.path,
         bridge.logFile,
-        buildBridgeChildEnv(ctx.env, node.path, script),
+        buildBridgeChildEnv(ctx.env, node.path, script.path),
       );
 
       appendLog(bridge.logFile, superviseExitMarker(localTimestamp(), code));
@@ -1053,15 +1111,20 @@ async function runDoctor(ctx: CommandContext): Promise<number> {
     printNodeFixes(io);
   }
 
-  const script = resolveBridgeScript(bridge, ctx.env);
+  const script = resolveBridgeScriptWithBuiltin(bridge, ctx.env);
   if (script) {
-    row(io, "服务脚本", script, "green");
-    const skillRoot = path.dirname(path.dirname(script));
-    const wsDir = path.join(skillRoot, "node_modules", "ws");
-    if (exists(wsDir)) row(io, "依赖 ws", wsDir, "green");
-    else row(io, "依赖 ws", `缺 ${wsDir}（在 easyeda-api 目录跑 npm install）`, "red");
+    row(io, "服务脚本", script.builtin ? `${script.path}  （内置）` : script.path, "green");
+    if (script.builtin) {
+      // 内置服务随包发布，ws 已经在 dependencies 里，不需要外部技能的 node_modules
+      row(io, "依赖 ws", "内置服务自带，无需外部 node_modules", "green");
+    } else {
+      const skillRoot = path.dirname(path.dirname(script.path));
+      const wsDir = path.join(skillRoot, "node_modules", "ws");
+      if (exists(wsDir)) row(io, "依赖 ws", wsDir, "green");
+      else row(io, "依赖 ws", `缺 ${wsDir}（在 easyeda-api 目录跑 npm install）`, "red");
+    }
   } else {
-    row(io, "服务脚本", "找不到 bridge-server.mjs", "red");
+    row(io, "服务脚本", "找不到 bridge-server.mjs，也没有内置服务", "red");
     io.out(paint.gray("              设 LCEDA_BRIDGE_SCRIPT 指向它的绝对路径"));
   }
 
