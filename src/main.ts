@@ -217,6 +217,11 @@ export const DOMAIN_GROUPS: readonly DomainGroup[] = [
     load: async () => (await import("./epro2/cli.ts")).runEpro2Command,
   },
   {
+    name: "eprj3",
+    summary: "读取与校验 .eprj3 文件夹工程、导出网表、调用建工程与门禁脚本",
+    load: async () => (await import("./eprj3/cli.ts")).runEprj3Command,
+  },
+  {
     name: "format",
     summary: "EasyEDA Pro 文件格式：类型检索、图元字段说明、记录校验、示例",
     load: async () => (await import("./format/cli.ts")).runFormatCommand,

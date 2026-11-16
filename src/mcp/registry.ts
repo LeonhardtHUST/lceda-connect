@@ -3,6 +3,7 @@ import { bridgeTools } from "../bridge/mcpTools.ts";
 import { cdpTools } from "../cdp/mcpTools.ts";
 import { edaTools } from "../eda/mcpTools.ts";
 import { epro2Tools } from "../epro2/mcpTools.ts";
+import { eprj3Tools } from "../eprj3/mcpTools.ts";
 import { formatTools } from "../format/mcpTools.ts";
 import { simTools } from "../sim/mcpTools.ts";
 import { coreTools } from "./coreTools.ts";
@@ -21,6 +22,7 @@ export function allTools(): ToolDef[] {
     ...apiDocsTools,
     ...formatTools,
     ...epro2Tools,
+    ...eprj3Tools,
     ...simTools,
   ];
   const seen = new Set<string>();

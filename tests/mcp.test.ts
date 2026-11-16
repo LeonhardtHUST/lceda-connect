@@ -43,6 +43,7 @@ test("每个领域的工具都已注册", () => {
     "api_search",
     "format_validate_record",
     "epro2_report",
+    "eprj3_validate",
     "sim_run",
   ]) {
     expect(names.has(expected), expected).toBe(true);
