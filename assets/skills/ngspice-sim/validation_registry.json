@@ -1,0 +1,483 @@
+{
+ "version": 2,
+ "comment": "验证等级注册表。等级由 scripts/validation.py 校验；VALIDATION_STATUS.md 由它生成，禁止手改。",
+ "policy": {
+  "CORRELATED_requires": "measurement(instrument, OUT_OF_SAMPLE) 或 field_solver",
+  "QUALIFIED_requires": "TESTED + CROSS_CHECKED + CORRELATED + regression=true",
+  "synthetic_never_promotes": true
+ },
+ "features": [
+  {
+   "feature": "原理图 IR / 连通性",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "cross_tool",
+     "what": "在线 bridge 与离线 .epro2 两个独立前端逐引脚一致（3 个工程）"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_ground.py, tests/test_compat.py"
+    }
+   ],
+   "note": "两个前端来自不同数据源（EDA API vs 工程文件），算独立信源；无实物对照"
+  },
+  {
+   "feature": "网表生成 R/C/L",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "cross_tool",
+     "what": "生成的网表在 ngspice 里跑出的工作点与手算/解析值一致"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_compat.py::test_basic_rc_netlist_unchanged"
+    }
+   ]
+  },
+  {
+   "feature": "网表生成 BJT/二极管/MOSFET",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "cross_tool",
+     "what": "9013 共射放大器：V_C=7.35V、增益 155、f_L=288Hz 与理论值一致"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_compat.py::test_bjt_generic_fallback"
+    }
+   ]
+  },
+  {
+   "feature": "地映射策略（AGND/DGND 独立）",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "tests/test_ground.py（7 项）"
+    },
+    {
+     "type": "cross_tool",
+     "what": "真实板 AGND/GND 分离后 ngspice 节点表核对"
+    }
+   ]
+  },
+  {
+   "feature": "外部 .SUBCKT/.MODEL pin mapping",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "cross_tool",
+     "what": "映射结果与 .SUBCKT 声明的引脚顺序逐项对照；真实 .lib 实跑通过"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_models.py（16 项，含缺失/重复/数量不符）"
+    }
+   ],
+   "note": "v2.4 原标 QUALIFIED 属高估，已降级：没有实测相关性"
+  },
+  {
+   "feature": "behavioral 占位模型",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "tests/test_compat.py::test_behavioral_placeholder_marked"
+    },
+    {
+     "type": "golden_corpus",
+     "what": "回归 fixture 的电流负载波形"
+    }
+   ],
+   "note": "本质是近似，最高只能到 TESTED"
+  },
+  {
+   "feature": "离线解析依赖边界（.epro2 → project-analysis）",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "tests/test_v26_dependency.py（定位优先级、DEPENDENCY_MISSING/PAGE_NOT_FOUND、IR 适配、PCB 产物适配、拒绝 .epro2 直读）"
+    },
+    {
+     "type": "cross_tool",
+     "what": "合成工程经依赖 analyze.py → IR → netlist → ngspice op 全链路跑通（test_sim_file_end_to_end_with_generated_project）"
+    }
+   ],
+   "note": "依赖是独立仓库（v1.3.0 起提供 segments/pads）；本机装了就实跑，缺失时用例 skip 且入口报 DEPENDENCY_MISSING。没有真实板卡对照，不标 CROSS_CHECKED"
+  },
+  {
+   "feature": "PCB 几何提取",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "cross_tool",
+     "what": "与原始 PCB LINE 线段逐段比对：+5V 4 段合计 31.2303 mm = 原始 14 条之和"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v23_units.py::test_pcb_geometry_t_junction_and_length"
+    }
+   ],
+   "note": "v2.4 原标 CORRELATED 属高估（那是与 CAD 数据比，不是与实测比），已降级；v2.6 起输入改为依赖的 pcb_geometry.json，拓扑算法未变"
+  },
+  {
+   "feature": "叠层 / Z0 / TD",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "analytic",
+     "what": "45.08mm×6ps/mm=270.48ps 与工具输出一致；微带/带状线用标准解析式"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v23_units.py::test_microstrip_z0_and_td"
+    }
+   ]
+  },
+  {
+   "feature": "过孔 R/L/C 估计",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "tests/test_v23_units.py::test_via_parasitics_magnitude"
+    },
+    {
+     "type": "analytic",
+     "what": "与 Johnson 经验式的文献量级对照"
+    }
+   ],
+   "note": "经验式，反焊盘靠假设，不升 CROSS_CHECKED"
+  },
+  {
+   "feature": "Touchstone 解析",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "cross_tool",
+     "what": "同一器件 MA/Hz 与 DB/MHz 两份文件差 ≤5e-5 dB"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v23_units.py::test_touchstone_formats_equivalent"
+    }
+   ]
+  },
+  {
+   "feature": "Touchstone 窄带 lumped 拟合",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "cross_tool",
+     "what": "对 C-L-C 梯形精确还原（220nH/100pF 分毫不差，S21 误差 0.000 dB）"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v23_units.py::test_touchstone_lumped_fit_recovers_lc"
+    }
+   ]
+  },
+  {
+   "feature": "scikit-rf 网络适配",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "cross_tool",
+     "what": "renorm 往返复原 ≤1e-9；cascade 与 skrf 直算一致"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v24_rf.py::test_rf_renormalize_preserves_physics"
+    }
+   ]
+  },
+  {
+   "feature": "Vector fitting（自适应阶数）",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "golden_corpus",
+     "what": "黄金语料 7 项 rms ≤0.5 dB（阶数 2–8）"
+    },
+    {
+     "type": "cross_tool",
+     "what": "极点/留数响应与原始 .sNp 逐频点比对"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v24_rf.py::test_vector_fit_reaches_target"
+    }
+   ],
+   "note": "算法来自 scikit-rf（BSD-3），未自研"
+  },
+  {
+   "feature": "Vector fit → SPICE round-trip",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "cross_tool",
+     "what": "ngspice sp 复算：lc_lpf max 0.0051 dB / 相位 0.078°（tol 0.5 dB）"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v24_roundtrip.py（9 项）"
+    }
+   ],
+   "note": "v2.4 原标 CORRELATED 属高估（ngspice 是另一工具，不是实测），已降级"
+  },
+  {
+   "feature": "Passivity 检查 + 受控 enforcement",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "cross_tool",
+     "what": "模型 S 的 σmax 与 skrf is_passive 对照；enforcement 恶化会回滚"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v24_rf.py::test_passivity_enforcement_records_before_after"
+    }
+   ]
+  },
+  {
+   "feature": "差分端口 / 混合模",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "analytic",
+     "what": "变换可逆 ≤1e-9；平衡对 Scd→−300dB（应为 0），两腿 5% 失配 → −38.3dB"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v24_rf.py::test_mixed_mode_transform_is_invertible"
+    }
+   ]
+  },
+  {
+   "feature": "耦合线解析估计",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "analytic",
+     "what": "s/h→∞ 时 Zdiff→2·Z0se（误差 <1Ω）；奇模慢于偶模"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v24_rf.py::test_coupled_microstrip_limits"
+    }
+   ],
+   "note": "经验耦合因子，未与场求解或实测交叉验证，不升 CROSS_CHECKED"
+  },
+  {
+   "feature": "差分对几何识别",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "合成几何：间距/失配识别正确；改名后仍能识别（不看 net 名）"
+    }
+   ],
+   "note": "尚无真实板的已知差分对对照，停在 TESTED"
+  },
+  {
+   "feature": "IBIS 基础（含 [Diff Pin]）",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "tests/test_v24_rf.py 与 test_v23_units.py 的 IBIS 用例"
+    },
+    {
+     "type": "golden_corpus",
+     "what": "自写 IBIS test double（非厂商数据）"
+    }
+   ],
+   "note": "没有厂商 IBIS 与实测波形对照"
+  },
+  {
+   "feature": "IBIS clamp（PWL）",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "tests/test_v25_hardening.py::test_clamp_pwl_uses_ibis_vcc_relative_voltage / test_ibis_fixture_is_standards_compliant / test_ibis_reference_precedence"
+    },
+    {
+     "type": "analytic",
+     "what": "DC 扫描逐点对比 IBIS 表（worst < 5e-5 A），并断言电流方向：V>Vcc 灌回电源轨、V<0 从地灌入"
+    }
+   ],
+   "note": "v2.5.1 修正：POWER clamp 自变量改为 V(Vcc)−V(pin)（IBIS Vtable = Vcc−Vout），取消全局取负；表符号即方向。fixture 已按 IBIS 4.0 规范重做。仍无厂商 IBIS 文件对照，故不标 CROSS_CHECKED"
+  },
+  {
+   "feature": "测量数据导入",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "tests/test_v24_rf.py 的 CSV/Touchstone 用例"
+    },
+    {
+     "type": "golden_corpus",
+     "what": "合成含噪波形 + 电源轨波形"
+    }
+   ]
+  },
+  {
+   "feature": "仿真 vs 实测相关",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "自相关 RMSE<1e-12；注入 200ps 时延检出误差 <20ps"
+    },
+    {
+     "type": "golden_corpus",
+     "what": "合成测量（不是仪器数据）"
+    }
+   ],
+   "note": "合成数据永远不能升 CORRELATED（见 registry 规则）"
+  },
+  {
+   "feature": "参数校准",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "可解析电路 F0 ±2kHz / Q ±0.2 复原；无 bounds 即拒绝"
+    },
+    {
+     "type": "golden_corpus",
+     "what": "已知参数扰动"
+    }
+   ]
+  },
+  {
+   "feature": "灵敏度 / 可辨识性",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "乘积型参数 → 正确报 PARAMETER_IDENTIFIABILITY_LOW"
+    }
+   ]
+  },
+  {
+   "feature": "De-embedding（Open/Short/OpenShort/…）",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "tests/test_v25_hardening.py：Open 反嵌入还原 Y（<1e-6）、OpenShort 接口/清单、频率网格逐点校验"
+    },
+    {
+     "type": "analytic",
+     "what": "并联 Y 相加/相减对串联 DUT 精确可逆"
+    }
+   ],
+   "note": "v2.5.1：skrf 构造参数修正（第一位置是 dummy 不是 DUT）；频率网格改为逐点 allclose，不一致报 DEEMBED_FREQ_GRID_MISMATCH，只有 --interpolate-fixtures 才重采并记 manifest"
+  },
+  {
+   "feature": "RLGC / 有损线",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "analytic",
+     "what": "√(L_total·C_total) == td_total；30mm 段 L≈11.12nH / C≈2.854pF；Rdc=ρl/(wt)"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v25_hardening.py::test_rlgc_absolute_values_and_delay / test_rlgc_r_is_in_series_with_l / test_rlgc_ladder_dc_division"
+    }
+   ],
+   "note": "v2.5.1 修两处：L/C 长度单位（v2.5 少 10³）与 R∥L 拓扑（应为 R 串联 L）；模型标 RLGC_CONSTANT_AT_FREF，R 取 Rdc，Rac(√f) 未实现"
+  },
+  {
+   "feature": "PDN 多端口",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "cross_tool",
+     "what": "Z11 与手算并联阻抗一致（8.7mΩ vs 8.75mΩ）"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v23_fixtures.py::test_case_f_multiport_pdn"
+    }
+   ]
+  },
+  {
+   "feature": "Monte Carlo / corner",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "同 seed 同结果；统计分位正确；case 上限生效"
+    }
+   ]
+  },
+  {
+   "feature": "FFT / 谐波 / 互调",
+   "status": "CROSS_CHECKED",
+   "evidence": [
+    {
+     "type": "analytic",
+     "what": "单音幅度归一后读回 1.0（误差 <5%）；1V→+10dBm@50Ω"
+    },
+    {
+     "type": "unit_test",
+     "what": "tests/test_v23_units.py 的 FFT 用例"
+    }
+   ]
+  },
+  {
+   "feature": "求解器抽象",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "tests/test_v24_rf.py::test_solver_backends"
+    },
+    {
+     "type": "cross_tool",
+     "what": "ngspice probe 与实际版本号一致"
+    }
+   ],
+   "note": "Xyce 后端为 EXPERIMENTAL"
+  },
+  {
+   "feature": "openEMS coupon 桥",
+   "status": "EXPERIMENTAL",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "tests/test_v25_hardening.py 验证 polygon 面积/旋转、多层介质、端口层 z、参考面选择与脚本静态检查"
+    },
+    {
+     "type": "analytic",
+     "what": "多边形面积 = 长度×线宽；45° 斜线不退化成轴对齐矩形"
+    }
+   ],
+   "note": "v2.5.1：改用当前 API（CSXCAD.ContinuousStructure + AddMetal + AddLinPoly），参考平面必须真实建入几何并标 REFERENCE_PLANE_APPROXIMATION。本机无 openEMS，从未 exec 过生成脚本 → 仍 EXPERIMENTAL"
+  },
+  {
+   "feature": "Cache / incremental rerun",
+   "status": "TESTED",
+   "evidence": [
+    {
+     "type": "unit_test",
+     "what": "tests/test_v25_hardening.py：依赖文件哈希纳入 key、命中并还原 raw/csv、增量计划"
+    },
+    {
+     "type": "analytic",
+     "what": "改 vendor.lib 内容而 deck 不变 → key 必须变（回归可判定）"
+    }
+   ],
+   "note": "v2.5.1：cache key 纳入 .include/.lib/model_map/IBIS/Touchstone 的真实哈希；命中时把 raw/csv/metrics 还原回 run 目录"
+  }
+ ]
+}

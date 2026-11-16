@@ -4,6 +4,7 @@ import { cdpTools } from "../cdp/mcpTools.ts";
 import { edaTools } from "../eda/mcpTools.ts";
 import { epro2Tools } from "../epro2/mcpTools.ts";
 import { formatTools } from "../format/mcpTools.ts";
+import { simTools } from "../sim/mcpTools.ts";
 import { coreTools } from "./coreTools.ts";
 import type { ToolDef } from "./types.ts";
 

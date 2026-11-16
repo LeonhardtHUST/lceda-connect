@@ -226,6 +226,11 @@ export const DOMAIN_GROUPS: readonly DomainGroup[] = [
     summary: "编辑器动词：双通道自检、读板、DRC、板指纹、自动布线、动词台账检索",
     load: async () => (await import("./eda/cli.ts")).runEdaCommand,
   },
+  {
+    name: "sim",
+    summary: "ngspice 仿真：网表生成、运行、raw 解析、指标、叠层与 Touchstone",
+    load: async () => (await import("./sim/cli.ts")).runSimCommand,
+  },
 ];
 
 /** cdp 命令组里由 CDP 客户端（src/cdp）处理的动作，其余仍归启动器。 */
