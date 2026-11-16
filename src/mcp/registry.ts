@@ -1,6 +1,7 @@
 import { apiDocsTools } from "../apidocs/mcpTools.ts";
 import { bridgeTools } from "../bridge/mcpTools.ts";
 import { cdpTools } from "../cdp/mcpTools.ts";
+import { edaTools } from "../eda/mcpTools.ts";
 import { epro2Tools } from "../epro2/mcpTools.ts";
 import { formatTools } from "../format/mcpTools.ts";
 import { coreTools } from "./coreTools.ts";

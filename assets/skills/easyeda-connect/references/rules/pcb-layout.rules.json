@@ -1,0 +1,874 @@
+{
+  "schema_version": "1",
+  "pack_id": "pcb-layout",
+  "delivery": {
+    "max_rules_per_stage": 7,
+    "rationale": "FollowBench(ACL24)：约束条数上升时满足率单调下降，GPT-4 CSL≈3.3；故每阶段硬上限 7，超了必须拆阶段而不是压缩描述。",
+    "reanchor": "每阶段入口重新投递该阶段子集（Lost-in-Multi-Turn：多轮 -39%，早轮假设不自纠）。"
+  },
+  "stages": [
+    {
+      "stage": "board_setup",
+      "label": "P0 板级设定",
+      "rules": [],
+      "requires_decisions": [
+        "D-STACKUP",
+        "D-PROCESS",
+        "D-IMPEDANCE"
+      ],
+      "why": "本阶段无已编译规则。先把叠层/工艺/阻抗答了——它们是后续规则 applicability 的前提；未答则相关规则一律 unverified（不是 pass）。"
+    },
+    {
+      "stage": "placement",
+      "label": "P1 布局",
+      "rules": [],
+      "requires_decisions": [
+        "D-GROUND",
+        "D-ZONE",
+        "D-INTERFACES"
+      ],
+      "why": "分区/接地/接口是设计决策，不是检查项。§4/§11 属 T3，机器不判；但 D-ZONE 的答案决定 P2b 密集区间距规则是否可判。"
+    },
+    {
+      "stage": "routing_width",
+      "label": "P2a 布线·线宽",
+      "rules": [
+        "R6.1-GPIO-W",
+        "R6.1-LOWCTRL-W",
+        "R6.1-ESC-W",
+        "R6.1-CLK-W",
+        "R6.1-PWR-LOW-W",
+        "R6.1-PWR-MAIN-W"
+      ],
+      "requires_decisions": [
+        "D-PROCESS"
+      ],
+      "why": "三条信号档同一阈值 0.20；电源两档要校核载流。板厂最小线宽未答时，逃逸档（0.15）是否可行无法判定。"
+    },
+    {
+      "stage": "routing_clearance",
+      "label": "P2b 布线·间距",
+      "rules": [
+        "R6.2-SIG-SIG-C",
+        "R6.2-DENSE-C",
+        "R6.2-PWR-SIG-C",
+        "R6.2-PWR-PWR-C"
+      ],
+      "requires_decisions": [
+        "D-ZONE"
+      ],
+      "why": "通用下限 0.20；密集区 0.15。板上没声明 dense_routing 时，密集区规则 unverified，且低于 0.20 但仍 ≥0.15 的配对会进 `would_pass_if_dense`（假阳性候选）。"
+    },
+    {
+      "stage": "routing_via",
+      "label": "P2c 布线·过孔",
+      "rules": [
+        "R7.3-VIA-STD",
+        "R7.3-VIA-COMPACT",
+        "R7.3-VIA-PWR"
+      ],
+      "requires_decisions": [
+        "D-PROCESS"
+      ],
+      "why": "三档只做归类与覆盖率，永不 fail；unclassified>0 ⇒ 整包至少 unverified。"
+    },
+    {
+      "stage": "signoff",
+      "label": "P5 签核",
+      "rules": [],
+      "requires_decisions": [],
+      "why": "§9 地平面 / §11 分区 / §12 EMI / §15 美学属 T3：机器不判，只出图 + 人工清单。签核报告从 compliance.jsonl 生成，不是再读一遍文档写感想。"
+    }
+  ],
+  "pack_version": "0.1.0",
+  "compiled_from": {
+    "statute_sha256": "0983f983699a60532e01d3a0babd2f61c6f8bc71d1a998fd5cc9184409663344",
+    "rule_args_digest": "sha256:b0b4c0743b45",
+    "digest_inputs": "sha256(canonical(sorted([[rid, assert, severity, applies_when]])))[:12]",
+    "pack_version": "0.1.0"
+  },
+  "statute": {
+    "path": "research/evidence/04-guidelines/pcb_layout_guideline/PCB_Layout_Guideline.md",
+    "version": "1.1",
+    "lines": 1770,
+    "archived": "2026-11-07",
+    "sha256": "0983f983699a60532e01d3a0babd2f61c6f8bc71d1a998fd5cc9184409663344"
+  },
+  "hash_spec": {
+    "algorithm": "sha256",
+    "input": "anchor 指定的整行原文（L<n> → 第 n 行，不 strip、不含换行）",
+    "format": "sha256:<前 12 位 hex>"
+  },
+  "assert_kinds": {
+    "track_width": {
+      "params": [
+        "min_mm",
+        "max_mm",
+        "max_policy"
+      ],
+      "fail_capable": true
+    },
+    "clearance": {
+      "params": [
+        "min_mm",
+        "max_mm",
+        "max_policy",
+        "scope"
+      ],
+      "fail_capable": true
+    },
+    "via_geometry": {
+      "params": [
+        "drill_mm",
+        "pad_mm"
+      ],
+      "fail_capable": false
+    }
+  },
+  "netclass_enum": [
+    "gpio",
+    "low_speed_ctrl",
+    "escape",
+    "clock",
+    "power_low",
+    "power_main"
+  ],
+  "severity_policy": {
+    "block": "判 fail 时阻断（本项目策略，非 statute 强制）",
+    "authority_binding": "project_policy",
+    "note": "statute 表头为「建议起始线宽/间距」(L302/L319)，L313 自述「仅为个人规则库的初始值」；故 severity=block 的授权来自本项目策略，不得表述为「规范要求」。"
+  },
+  "net_class_map": [
+    {
+      "net_class": "NC_DEFAULT",
+      "maps_to": [
+        "gpio",
+        "low_speed_ctrl",
+        "escape"
+      ],
+      "ambiguous": true,
+      "note": "「普通信号」需按网络用途细分，不能由网络类唯一决定"
+    },
+    {
+      "net_class": "NC_POWER_LOW",
+      "maps_to": [
+        "power_low"
+      ],
+      "ambiguous": false
+    },
+    {
+      "net_class": "NC_POWER_HIGH",
+      "maps_to": [],
+      "ambiguous": false,
+      "note": "对应 §6.1 L310 大电流电源，未编译（not_checkable）"
+    },
+    {
+      "net_class": "NC_CLK",
+      "maps_to": [
+        "clock"
+      ],
+      "ambiguous": false
+    },
+    {
+      "net_class": "NC_DIFF_90R",
+      "maps_to": [],
+      "ambiguous": false,
+      "note": "差分未编译（v0.2）"
+    },
+    {
+      "net_class": "NC_DIFF_100R",
+      "maps_to": [],
+      "ambiguous": false,
+      "note": "差分未编译（v0.2）"
+    },
+    {
+      "net_class": "NC_RF_50R",
+      "maps_to": [],
+      "ambiguous": false,
+      "note": "RF 按阻抗计算，未编译（not_checkable）"
+    },
+    {
+      "net_class": "NC_ANALOG",
+      "maps_to": [],
+      "ambiguous": false,
+      "note": "模拟隔离无阈值，未编译"
+    },
+    {
+      "net_class": "NC_HIZ",
+      "maps_to": [],
+      "ambiguous": false,
+      "note": "寄生耦合无阈值，未编译"
+    },
+    {
+      "net_class": "NC_HV",
+      "maps_to": [],
+      "ambiguous": false,
+      "note": "高压按安规计算，未编译（not_checkable）"
+    }
+  ],
+  "rules": [
+    {
+      "rid": "R6.1-GPIO-W",
+      "title": "普通 GPIO 线宽",
+      "section": "§6.1",
+      "phase": "routing",
+      "stage": "routing_width",
+      "applies_when": {
+        "netclass": [
+          "gpio"
+        ]
+      },
+      "assert": {
+        "kind": "track_width",
+        "min_mm": 0.2,
+        "max_mm": null,
+        "max_policy": "advisory"
+      },
+      "severity": "block",
+      "authority": {
+        "header_anchor": "L302",
+        "source_strength": "建议起始线宽",
+        "note_anchor": "L313",
+        "binding": "project_policy"
+      },
+      "remediation": "把该网络线宽加到 ≥0.20 mm",
+      "exception": "密集区域逃逸线 0.15 mm（§6.1 L306）；RF/阻抗控制线按计算，不走本规则",
+      "number_owner": "项目策略（statute 表头写「建议起始线宽」，非强制）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": true,
+      "evidence": {
+        "anchor": "L304",
+        "hash": "sha256:8d59e302e564"
+      }
+    },
+    {
+      "rid": "R6.1-LOWCTRL-W",
+      "title": "低速控制信号线宽",
+      "section": "§6.1",
+      "phase": "routing",
+      "stage": "routing_width",
+      "applies_when": {
+        "netclass": [
+          "low_speed_ctrl"
+        ]
+      },
+      "assert": {
+        "kind": "track_width",
+        "min_mm": 0.2,
+        "max_mm": null,
+        "max_policy": "advisory"
+      },
+      "severity": "block",
+      "authority": {
+        "header_anchor": "L302",
+        "source_strength": "建议起始线宽",
+        "note_anchor": "L313",
+        "binding": "project_policy"
+      },
+      "remediation": "把该网络线宽加到 ≥0.20 mm",
+      "exception": "密集区域逃逸线 0.15 mm（§6.1 L306）；RF/阻抗控制线按计算，不走本规则",
+      "number_owner": "项目策略（statute 表头写「建议起始线宽」，非强制）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": true,
+      "evidence": {
+        "anchor": "L305",
+        "hash": "sha256:911d46c5aa87"
+      }
+    },
+    {
+      "rid": "R6.1-ESC-W",
+      "title": "密集区域逃逸线宽",
+      "section": "§6.1",
+      "phase": "routing",
+      "stage": "routing_width",
+      "applies_when": {
+        "netclass": [
+          "escape"
+        ]
+      },
+      "assert": {
+        "kind": "track_width",
+        "min_mm": 0.15,
+        "max_mm": null,
+        "max_policy": "advisory"
+      },
+      "severity": "block",
+      "authority": {
+        "header_anchor": "L302",
+        "source_strength": "建议起始线宽",
+        "note_anchor": "L313",
+        "binding": "project_policy"
+      },
+      "remediation": "把该网络线宽加到 ≥0.15 mm",
+      "exception": "密集区域逃逸线 0.15 mm（§6.1 L306）；RF/阻抗控制线按计算，不走本规则",
+      "number_owner": "项目策略（statute 表头写「建议起始线宽」，非强制）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": true,
+      "evidence": {
+        "anchor": "L306",
+        "hash": "sha256:6ff87a95298a"
+      }
+    },
+    {
+      "rid": "R6.1-CLK-W",
+      "title": "普通时钟线宽",
+      "section": "§6.1",
+      "phase": "routing",
+      "stage": "routing_width",
+      "applies_when": {
+        "netclass": [
+          "clock"
+        ]
+      },
+      "assert": {
+        "kind": "track_width",
+        "min_mm": 0.2,
+        "max_mm": null,
+        "max_policy": "advisory"
+      },
+      "severity": "block",
+      "authority": {
+        "header_anchor": "L302",
+        "source_strength": "建议起始线宽",
+        "note_anchor": "L313",
+        "binding": "project_policy"
+      },
+      "remediation": "把该网络线宽加到 ≥0.20 mm",
+      "exception": "密集区域逃逸线 0.15 mm（§6.1 L306）；RF/阻抗控制线按计算，不走本规则",
+      "number_owner": "项目策略（statute 表头写「建议起始线宽」，非强制）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": true,
+      "evidence": {
+        "anchor": "L307",
+        "hash": "sha256:9475fcde6efb"
+      }
+    },
+    {
+      "rid": "R6.1-PWR-LOW-W",
+      "title": "低电流电源线宽",
+      "section": "§6.1",
+      "phase": "routing",
+      "stage": "routing_width",
+      "applies_when": {
+        "netclass": [
+          "power_low"
+        ]
+      },
+      "assert": {
+        "kind": "track_width",
+        "min_mm": 0.3,
+        "max_mm": 0.4,
+        "max_policy": "advisory"
+      },
+      "severity": "block",
+      "authority": {
+        "header_anchor": "L302",
+        "source_strength": "建议起始线宽",
+        "note_anchor": "L313",
+        "binding": "project_policy"
+      },
+      "remediation": "把线宽调到 0.30–0.40 mm（改前先校核载流/温升）",
+      "exception": "密集区域逃逸线 0.15 mm（§6.1 L306）；RF/阻抗控制线按计算，不走本规则",
+      "number_owner": "项目策略（statute 表头写「建议起始线宽」，非强制）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": true,
+      "evidence": {
+        "anchor": "L308",
+        "hash": "sha256:b078d0db8c98"
+      }
+    },
+    {
+      "rid": "R6.1-PWR-MAIN-W",
+      "title": "一般供电干线线宽",
+      "section": "§6.1",
+      "phase": "routing",
+      "stage": "routing_width",
+      "applies_when": {
+        "netclass": [
+          "power_main"
+        ]
+      },
+      "assert": {
+        "kind": "track_width",
+        "min_mm": 0.5,
+        "max_mm": 1.0,
+        "max_policy": "advisory"
+      },
+      "severity": "block",
+      "authority": {
+        "header_anchor": "L302",
+        "source_strength": "建议起始线宽",
+        "note_anchor": "L313",
+        "binding": "project_policy"
+      },
+      "remediation": "把线宽调到 0.50–1.00 mm（改前先校核载流/温升）",
+      "exception": "密集区域逃逸线 0.15 mm（§6.1 L306）；RF/阻抗控制线按计算，不走本规则",
+      "number_owner": "项目策略（statute 表头写「建议起始线宽」，非强制）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": true,
+      "evidence": {
+        "anchor": "L309",
+        "hash": "sha256:672199895bdb"
+      }
+    },
+    {
+      "rid": "R6.2-SIG-SIG-C",
+      "title": "信号对信号间距",
+      "section": "§6.2",
+      "phase": "routing",
+      "stage": "routing_clearance",
+      "applies_when": {
+        "scope": "sig-sig"
+      },
+      "assert": {
+        "kind": "clearance",
+        "min_mm": 0.2,
+        "max_mm": null,
+        "max_policy": "not_operational",
+        "scope": "sig-sig"
+      },
+      "severity": "block",
+      "authority": {
+        "header_anchor": "L319",
+        "source_strength": "建议起始间距",
+        "note_anchor": "L328",
+        "binding": "project_policy"
+      },
+      "remediation": "把两网边到边间距拉到 ≥0.20 mm",
+      "exception": "密集布线区 0.15 mm（§6.2 L322）；高压/RF 按安规或阻抗要求单独定",
+      "number_owner": "项目策略（statute 表头写「建议起始间距」，非强制）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": true,
+      "evidence": {
+        "anchor": "L321",
+        "hash": "sha256:d6183f27fe84"
+      }
+    },
+    {
+      "rid": "R6.2-DENSE-C",
+      "title": "密集布线区间距",
+      "section": "§6.2",
+      "phase": "routing",
+      "stage": "routing_clearance",
+      "applies_when": {
+        "scope": "dense"
+      },
+      "assert": {
+        "kind": "clearance",
+        "min_mm": 0.15,
+        "max_mm": null,
+        "max_policy": "not_operational",
+        "scope": "dense"
+      },
+      "severity": "block",
+      "authority": {
+        "header_anchor": "L319",
+        "source_strength": "建议起始间距",
+        "note_anchor": "L328",
+        "binding": "project_policy"
+      },
+      "remediation": "把两网边到边间距拉到 ≥0.15 mm",
+      "exception": "密集布线区 0.15 mm（§6.2 L322）；高压/RF 按安规或阻抗要求单独定",
+      "number_owner": "项目策略（statute 表头写「建议起始间距」，非强制）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": true,
+      "evidence": {
+        "anchor": "L322",
+        "hash": "sha256:89ecd4a579e0"
+      }
+    },
+    {
+      "rid": "R6.2-PWR-SIG-C",
+      "title": "电源对信号间距",
+      "section": "§6.2",
+      "phase": "routing",
+      "stage": "routing_clearance",
+      "applies_when": {
+        "scope": "pwr-sig"
+      },
+      "assert": {
+        "kind": "clearance",
+        "min_mm": 0.2,
+        "max_mm": 0.3,
+        "max_policy": "not_operational",
+        "scope": "pwr-sig"
+      },
+      "severity": "block",
+      "authority": {
+        "header_anchor": "L319",
+        "source_strength": "建议起始间距",
+        "note_anchor": "L328",
+        "binding": "project_policy"
+      },
+      "remediation": "把两网边到边间距拉到 ≥0.20 mm",
+      "exception": "密集布线区 0.15 mm（§6.2 L322）；高压/RF 按安规或阻抗要求单独定",
+      "number_owner": "项目策略（statute 表头写「建议起始间距」，非强制）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": true,
+      "evidence": {
+        "anchor": "L323",
+        "hash": "sha256:2c79a191a86a"
+      }
+    },
+    {
+      "rid": "R6.2-PWR-PWR-C",
+      "title": "不同电源网络间距",
+      "section": "§6.2",
+      "phase": "routing",
+      "stage": "routing_clearance",
+      "applies_when": {
+        "scope": "pwr-pwr"
+      },
+      "assert": {
+        "kind": "clearance",
+        "min_mm": 0.2,
+        "max_mm": 0.3,
+        "max_policy": "not_operational",
+        "scope": "pwr-pwr"
+      },
+      "severity": "block",
+      "authority": {
+        "header_anchor": "L319",
+        "source_strength": "建议起始间距",
+        "note_anchor": "L328",
+        "binding": "project_policy"
+      },
+      "remediation": "把两网边到边间距拉到 ≥0.20 mm",
+      "exception": "密集布线区 0.15 mm（§6.2 L322）；高压/RF 按安规或阻抗要求单独定",
+      "number_owner": "项目策略（statute 表头写「建议起始间距」，非强制）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": true,
+      "evidence": {
+        "anchor": "L324",
+        "hash": "sha256:e5bc0c145cc9"
+      }
+    },
+    {
+      "rid": "R7.3-VIA-STD",
+      "title": "标准过孔 0.30/0.60 mm",
+      "section": "§7.3",
+      "phase": "routing",
+      "stage": "routing_via",
+      "applies_when": {
+        "object": "via"
+      },
+      "assert": {
+        "kind": "via_geometry",
+        "drill_mm": 0.3,
+        "pad_mm": 0.6
+      },
+      "severity": "info",
+      "authority": {
+        "header_anchor": "L407",
+        "source_strength": "起始库",
+        "note_anchor": "L414",
+        "binding": "project_policy"
+      },
+      "remediation": "改用标准档 0.30/0.60 mm，或把该孔径登记例外",
+      "exception": "库件自带孔径、板厂工艺下限（§7.3 L412「按工艺确认」）",
+      "number_owner": "项目策略（§7.3 为「起始库」）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": false,
+      "evidence": {
+        "anchor": "L409",
+        "hash": "sha256:b6fb23b60e73"
+      }
+    },
+    {
+      "rid": "R7.3-VIA-COMPACT",
+      "title": "紧凑过孔 0.25/0.50 mm",
+      "section": "§7.3",
+      "phase": "routing",
+      "stage": "routing_via",
+      "applies_when": {
+        "object": "via"
+      },
+      "assert": {
+        "kind": "via_geometry",
+        "drill_mm": 0.25,
+        "pad_mm": 0.5
+      },
+      "severity": "info",
+      "authority": {
+        "header_anchor": "L407",
+        "source_strength": "起始库",
+        "note_anchor": "L414",
+        "binding": "project_policy"
+      },
+      "remediation": "改用标准档 0.25/0.50 mm，或把该孔径登记例外",
+      "exception": "库件自带孔径、板厂工艺下限（§7.3 L412「按工艺确认」）",
+      "number_owner": "项目策略（§7.3 为「起始库」）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": false,
+      "evidence": {
+        "anchor": "L410",
+        "hash": "sha256:3b600d55f8c0"
+      }
+    },
+    {
+      "rid": "R7.3-VIA-PWR",
+      "title": "大电流过孔 0.40/0.80 mm",
+      "section": "§7.3",
+      "phase": "routing",
+      "stage": "routing_via",
+      "applies_when": {
+        "object": "via"
+      },
+      "assert": {
+        "kind": "via_geometry",
+        "drill_mm": 0.4,
+        "pad_mm": 0.8
+      },
+      "severity": "info",
+      "authority": {
+        "header_anchor": "L407",
+        "source_strength": "起始库",
+        "note_anchor": "L414",
+        "binding": "project_policy"
+      },
+      "remediation": "改用标准档 0.40/0.80 mm，或把该孔径登记例外",
+      "exception": "库件自带孔径、板厂工艺下限（§7.3 L412「按工艺确认」）",
+      "number_owner": "项目策略（§7.3 为「起始库」）",
+      "verify_by": "geometry",
+      "on_unverifiable": "unverified",
+      "fail_capable": false,
+      "evidence": {
+        "anchor": "L411",
+        "hash": "sha256:56c80f72e68e"
+      }
+    }
+  ],
+  "unresolved": [
+    {
+      "rid": "R7.2-ANNULAR",
+      "section": "§7.2",
+      "anchor": "L400",
+      "covers": [
+        "L403"
+      ],
+      "reason": "只有公式 W=(Dpad-Ddrill)/2 与算例（0.8/1.3→0.25 mm 名义值），无下限阈值；不得自造",
+      "blocked_by": "需板厂工艺能力或 IPC-2221 裁决",
+      "stage": "routing_via"
+    }
+  ],
+  "not_checkable": [
+    {
+      "section": "§6.1",
+      "anchor": "L310",
+      "stage": "routing_width",
+      "reason": "「按计算确定」：载流需 IPC-2152 + 铜厚/温升，属外部计算域"
+    },
+    {
+      "section": "§6.1",
+      "anchor": "L311",
+      "stage": "routing_width",
+      "reason": "「按阻抗计算」：需场求解 + 叠层参数"
+    },
+    {
+      "section": "§6.2",
+      "anchor": "L325",
+      "stage": "routing_clearance",
+      "reason": "「按安规计算」：需外部安规表（IPC-2221）+ 网络电压元数据"
+    },
+    {
+      "section": "§6.2",
+      "anchor": "L326",
+      "stage": "routing_clearance",
+      "reason": "「按阻抗和耦合要求确定」：需场求解"
+    },
+    {
+      "section": "§7.3",
+      "anchor": "L412",
+      "stage": "routing_via",
+      "reason": "「按工艺确认」：规范未给任何数值，无规则可编译"
+    }
+  ],
+  "deferred": [
+    {
+      "section": "§16.4",
+      "anchor": "L1204",
+      "declared_lines": [
+        "L1204",
+        "L1205",
+        "L1206",
+        "L1207"
+      ],
+      "reason": "丝印字号需「文字角色分类」（位号/接口/标题/产品名），分类器未建",
+      "until": "v0.2",
+      "stage": "signoff"
+    },
+    {
+      "section": "§7.4",
+      "anchor": "L422",
+      "declared_lines": [
+        "L422",
+        "L423",
+        "L424",
+        "L425"
+      ],
+      "reason": "螺丝孔间隙需「螺丝规格」板级元数据，板上没有",
+      "until": "v0.2",
+      "stage": "placement"
+    },
+    {
+      "section": "§13",
+      "anchor": "L1051",
+      "declared_lines": [],
+      "reason": "网络命名需正则设计 + 全量网络名扫描，隐私风险高（网络名属 G7 禁词）；§13.6 网络类到 §6.1 用途的映射另立项",
+      "until": "v0.2",
+      "stage": "board_setup"
+    }
+  ],
+  "scope_coverage_contract": {
+    "sections": [
+      "§6.1",
+      "§6.2",
+      "§7.2",
+      "§7.3",
+      "§7.4",
+      "§16.4"
+    ],
+    "non_numeric_anchors": [
+      "L310",
+      "L325",
+      "L326",
+      "L400",
+      "L412"
+    ],
+    "note": "这 5 个 anchor 属于声明桶但不含「数字+单位」，故不在 scope 数值行集合内。白名单是人工裁定，禁止脚本自动生成——自动生成会把「包含式覆盖检查」改成恒真。"
+  },
+  "presets_provenance": [
+    {
+      "pointer": "presets.default.net_rules.*.Track.form.data.1.minValue",
+      "value": 0.2,
+      "status": "aligned",
+      "source": {
+        "rid": "R6.1-GPIO-W",
+        "section": "§6.1",
+        "anchor": "L304"
+      }
+    },
+    {
+      "pointer": "presets.default.net_rules.*.Track.form.data.1.defaultValue",
+      "value": 0.25,
+      "status": "unresolved_legacy",
+      "reason": "§6.1 只给「建议起始线宽」单值，规范无 default 概念",
+      "blocked_by": "需规则库作者裁决",
+      "until": "v0.2"
+    },
+    {
+      "pointer": "presets.default.net_rules.*.Track.form.data.1.maxValue",
+      "value": 0.6,
+      "status": "unresolved_legacy",
+      "reason": "§6.1 未给默认信号线宽上界",
+      "blocked_by": "需规则库作者裁决",
+      "until": "v0.2"
+    },
+    {
+      "pointer": "presets.power.net_rules.GND.Track.form.data.1.minValue",
+      "value": 0.3,
+      "status": "aligned",
+      "source": {
+        "rid": "R6.1-PWR-LOW-W",
+        "section": "§6.1",
+        "anchor": "L308"
+      }
+    },
+    {
+      "pointer": "presets.power.net_rules.GND.Track.form.data.1.defaultValue",
+      "value": 0.5,
+      "status": "unresolved_legacy",
+      "reason": "规范无 default 概念（0.5 恰等于 L309 下界，巧合不可引为出处）",
+      "blocked_by": "需规则库作者裁决",
+      "until": "v0.2"
+    },
+    {
+      "pointer": "presets.power.net_rules.GND.Track.form.data.1.maxValue",
+      "value": 2.0,
+      "status": "out_of_statute_range",
+      "source": {
+        "rid": "R6.1-PWR-MAIN-W",
+        "section": "§6.1",
+        "anchor": "L309"
+      },
+      "target_value": 1.0,
+      "reason": "§6.1 一般供电干线上限 1.00 mm；2.0 超出 statute 区间，属放宽型漂移"
+    },
+    {
+      "pointer": "presets.power.net_rules.VCC.Track.form.data.1.minValue",
+      "value": 0.3,
+      "status": "aligned",
+      "source": {
+        "rid": "R6.1-PWR-LOW-W",
+        "section": "§6.1",
+        "anchor": "L308"
+      }
+    },
+    {
+      "pointer": "presets.power.net_rules.VCC.Track.form.data.1.defaultValue",
+      "value": 0.5,
+      "status": "unresolved_legacy",
+      "reason": "规范无 default 概念",
+      "blocked_by": "需规则库作者裁决",
+      "until": "v0.2"
+    },
+    {
+      "pointer": "presets.power.net_rules.VCC.Track.form.data.1.maxValue",
+      "value": 2.0,
+      "status": "out_of_statute_range",
+      "source": {
+        "rid": "R6.1-PWR-MAIN-W",
+        "section": "§6.1",
+        "anchor": "L309"
+      },
+      "target_value": 1.0,
+      "reason": "§6.1 一般供电干线上限 1.00 mm；2.0 超出 statute 区间，属放宽型漂移"
+    },
+    {
+      "pointer": "silk_limits.min_height_mil",
+      "value": 35.43,
+      "status": "derived_deferred",
+      "source": {
+        "section": "§16.4",
+        "anchor": "L1204"
+      },
+      "reason": "0.9 mm / 0.0254 = 35.433；对应规则 deferred 到 v0.2"
+    },
+    {
+      "pointer": "silk_limits.max_height_mil",
+      "value": 118.11,
+      "status": "derived_deferred",
+      "source": {
+        "section": "§16.4",
+        "anchor": "L1207"
+      },
+      "reason": "3.0 mm / 0.0254 = 118.110；对应规则 deferred 到 v0.2"
+    },
+    {
+      "pointer": "silk_limits.pad_clearance_mil",
+      "value": 20,
+      "status": "unresolved_legacy",
+      "source": {
+        "section": "§16.5",
+        "anchor": "L1215"
+      },
+      "reason": "§16.5 只有定性要求（避免文字进入阻焊开窗），无任何数值；20 mil 为自造阈值",
+      "kept_because": "scripts/eda_verbs.py:736 消费该值，置 null 会使 `dist < null` 恒 false ⇒ 规则静默失效",
+      "blocked_by": "需板厂工艺能力裁决",
+      "until": "v0.2",
+      "stage": "board_setup"
+    }
+  ]
+}

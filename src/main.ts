@@ -221,6 +221,11 @@ export const DOMAIN_GROUPS: readonly DomainGroup[] = [
     summary: "EasyEDA Pro 文件格式：类型检索、图元字段说明、记录校验、示例",
     load: async () => (await import("./format/cli.ts")).runFormatCommand,
   },
+  {
+    name: "eda",
+    summary: "编辑器动词：双通道自检、读板、DRC、板指纹、自动布线、动词台账检索",
+    load: async () => (await import("./eda/cli.ts")).runEdaCommand,
+  },
 ];
 
 /** cdp 命令组里由 CDP 客户端（src/cdp）处理的动作，其余仍归启动器。 */
