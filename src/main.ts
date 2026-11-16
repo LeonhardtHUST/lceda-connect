@@ -1,5 +1,3 @@
-import { createRequire } from "node:module";
-
 import {
   CliUsageError,
   boolValue,
@@ -12,6 +10,7 @@ import {
 import { loadConfig, type ConfigOverrides } from "./core/config.ts";
 import { stdIo, type Io } from "./core/io.ts";
 import { hr, paint } from "./core/term.ts";
+import { packageVersion } from "./core/version.ts";
 import { runBridgeAction } from "./commands/bridge.ts";
 import { runCdpAction } from "./commands/cdp.ts";
 import type { BridgeAction, CdpAction, CommandContext } from "./commands/types.ts";
@@ -92,15 +91,7 @@ export const BRIDGE_OPTIONS: readonly OptionSpec[] = [
   },
 ];
 
-export function packageVersion(): string {
-  try {
-    const require = createRequire(import.meta.url);
-    const pkg = require("../package.json") as { version?: string };
-    return pkg.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}
+export { packageVersion };
 
 export function globalHelp(): string[] {
   return [
@@ -112,6 +103,7 @@ export function globalHelp(): string[] {
     paint.white("  命令组:"),
     "    cdp        带 CDP 调试端口启动 / 管理立创EDA专业版",
     "    bridge     EasyEDA AI Bridge 服务管理",
+    "    mcp        以 stdio 运行 MCP 服务 / 列出工具",
     "",
     paint.white("  等价写法:"),
     "    lceda-cdp <动作>        等价于 lceda-connect cdp <动作>",
@@ -184,6 +176,50 @@ export function bridgeHelp(): string[] {
   ];
 }
 
+export function mcpHelp(): string[] {
+  return [
+    "",
+    paint.cyan("  lceda-connect mcp  --  MCP 服务（stdio）"),
+    paint.gray(`  ${hr()}`),
+    "  用法: lceda-connect mcp [动作]     （也可直接用 lceda-mcp）",
+    "",
+    paint.white("  动作:"),
+    "    serve      以 stdio 运行 MCP 服务（默认动作，给 MCP 客户端调用）",
+    "    tools      列出全部 MCP 工具名与说明",
+    "",
+    paint.white("  MCP 客户端配置示例:"),
+    '    { "command": "npx", "args": ["-y", "lceda-connect", "mcp"] }',
+    "",
+  ];
+}
+
+async function runMcpGroup(
+  argv: readonly string[],
+  io: Io,
+  env: NodeJS.ProcessEnv,
+): Promise<number> {
+  const action = (argv[0] ?? "serve").trim().toLowerCase();
+  if (action === "help" || action === "--help" || action === "-h") {
+    print(io, mcpHelp());
+    return 0;
+  }
+  if (action === "tools") {
+    const { allTools } = await import("./mcp/registry.ts");
+    for (const tool of allTools()) {
+      io.out(`${paint.cyan(tool.name.padEnd(28))} ${tool.description.split("。")[0] ?? ""}`);
+    }
+    return 0;
+  }
+  if (action === "serve") {
+    const { serveStdio } = await import("./mcp/server.ts");
+    await serveStdio(env);
+    return 0;
+  }
+  io.err(paint.red(`  不认识的命令: ${action}`));
+  print(io, mcpHelp());
+  return 1;
+}
+
 export interface MainOptions {
   argv: readonly string[];
   defaultGroup?: "cdp" | "bridge";
@@ -212,6 +248,11 @@ export async function main(options: MainOptions): Promise<number> {
   const [first, ...rest] = argv;
   const isHelpFlag = (token: string | undefined): boolean =>
     token === "--help" || token === "-h" || token === "-help" || token === "help";
+
+  if (first === "mcp") {
+    return await runMcpGroup(rest, io, env);
+  }
+
   let group: "cdp" | "bridge";
   let tail: string[];
 
