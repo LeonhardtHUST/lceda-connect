@@ -1,0 +1,437 @@
+{
+ "title": "agent-drill-rc50",
+ "menus": [
+  {
+   "name": "设计",
+   "opened": true,
+   "items": [
+    {
+     "text": "从原理图导入变更Alt+I",
+     "kind": "button"
+    },
+    {
+     "text": "更新PCB到原理图",
+     "kind": "button"
+    },
+    {
+     "text": "从复用模板更新布局布线...",
+     "kind": "button"
+    },
+    {
+     "text": "设计规则...",
+     "kind": "button"
+    },
+    {
+     "text": "检查DRC",
+     "kind": "button"
+    },
+    {
+     "text": "检查DRC(自定义)...",
+     "kind": "button"
+    },
+    {
+     "text": "清除错误",
+     "kind": "button"
+    },
+    {
+     "text": "实时DRC",
+     "kind": "button"
+    },
+    {
+     "text": "检查DFM...",
+     "kind": "button"
+    },
+    {
+     "text": "板子形状(S)",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "分配位号...",
+     "kind": "button"
+    },
+    {
+     "text": "交叉选择...Shift+X",
+     "kind": "button"
+    },
+    {
+     "text": "交叉选择模式",
+     "kind": "button"
+    },
+    {
+     "text": "网络类管理器...",
+     "kind": "button"
+    },
+    {
+     "text": "差分对管理器...",
+     "kind": "button"
+    },
+    {
+     "text": "等长网络组管理器...",
+     "kind": "button"
+    },
+    {
+     "text": "xNet(X)...",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "焊盘对组管理器...",
+     "kind": "button"
+    },
+    {
+     "text": "更新工程库...",
+     "kind": "button"
+    },
+    {
+     "text": "更新复用模块...",
+     "kind": "button"
+    },
+    {
+     "text": "重置元件唯一ID...",
+     "kind": "button"
+    }
+   ]
+  },
+  {
+   "name": "布线",
+   "opened": true,
+   "items": [
+    {
+     "text": "单路布线Alt+W",
+     "kind": "button"
+    },
+    {
+     "text": "差分对布线Alt+D",
+     "kind": "button"
+    },
+    {
+     "text": "多路布线",
+     "kind": "button"
+    },
+    {
+     "text": "拉伸导线Shift+W",
+     "kind": "button"
+    },
+    {
+     "text": "优化选中导线",
+     "kind": "button"
+    },
+    {
+     "text": "等长调节Shift+A",
+     "kind": "button"
+    },
+    {
+     "text": "差分对等长调节",
+     "kind": "button"
+    },
+    {
+     "text": "扇出布线...",
+     "kind": "button"
+    },
+    {
+     "text": "自动布线...",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "草图自动布线...",
+     "kind": "button"
+    },
+    {
+     "text": "布线模式Shift+R",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "布线拐角L",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "布线宽度",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "移除回路",
+     "kind": "button"
+    },
+    {
+     "text": "清除布线",
+     "kind": "submenu-unexpanded"
+    }
+   ]
+  },
+  {
+   "name": "布局",
+   "opened": true,
+   "items": [
+    {
+     "text": "自动元件布局",
+     "kind": "button"
+    },
+    {
+     "text": "自动位号布局...",
+     "kind": "button"
+    },
+    {
+     "text": "草图自动元件布局",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "组合",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "属性位置...",
+     "kind": "button"
+    },
+    {
+     "text": "互换位置",
+     "kind": "button"
+    },
+    {
+     "text": "翻面",
+     "kind": "button"
+    },
+    {
+     "text": "偏移",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "对齐",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "分布",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "旋转",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "翻转",
+     "kind": "submenu-unexpanded"
+    }
+   ]
+  },
+  {
+   "name": "放置",
+   "opened": true,
+   "items": [
+    {
+     "text": "器件/复用模块(P)...Shift+F",
+     "kind": "button"
+    },
+    {
+     "text": "3D体(B)",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "过孔(V)Alt+V",
+     "kind": "button"
+    },
+    {
+     "text": "缝合孔",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "包地孔...",
+     "kind": "button"
+    },
+    {
+     "text": "焊盘(P)Alt+P",
+     "kind": "button"
+    },
+    {
+     "text": "异形焊盘",
+     "kind": "button"
+    },
+    {
+     "text": "板框",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "铺铜区域",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "填充区域",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "挖槽区域",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "禁止区域",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "约束区域",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "线条(L)",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "测试点",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "FPC补强板",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "文本",
+     "kind": "button"
+    },
+    {
+     "text": "图片(G)...",
+     "kind": "button"
+    },
+    {
+     "text": "尺寸(D)",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "堆叠表",
+     "kind": "button"
+    },
+    {
+     "text": "钻孔表",
+     "kind": "button"
+    },
+    {
+     "text": "画布原点",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "3D外壳 - 边框",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "3D外壳 - 螺丝柱",
+     "kind": "button"
+    },
+    {
+     "text": "3D外壳 - 侧面基准线",
+     "kind": "button"
+    },
+    {
+     "text": "3D外壳 - 侧面挖槽区域",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "3D外壳 - 顶面/底面挖槽区域",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "3D外壳 - 侧面实体",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "3D外壳 - 顶面/底面实体",
+     "kind": "submenu-unexpanded"
+    }
+   ]
+  },
+  {
+   "name": "工具",
+   "opened": true,
+   "items": [
+    {
+     "text": "测量",
+     "kind": "submenu",
+     "children": [
+      {
+       "text": "测量距离Alt+M",
+       "kind": "button"
+      },
+      {
+       "text": "测量对象",
+       "kind": "button"
+      },
+      {
+       "text": "清除测量结果Shift+C",
+       "kind": "button"
+      }
+     ]
+    },
+    {
+     "text": "泪滴...",
+     "kind": "button"
+    },
+    {
+     "text": "拼板...",
+     "kind": "button"
+    },
+    {
+     "text": "合板...",
+     "kind": "button"
+    },
+    {
+     "text": "移除未使用的焊盘...",
+     "kind": "button"
+    },
+    {
+     "text": "日志...",
+     "kind": "button"
+    },
+    {
+     "text": "连接焊盘",
+     "kind": "button"
+    },
+    {
+     "text": "器件管理器...",
+     "kind": "button"
+    },
+    {
+     "text": "器件标准化...",
+     "kind": "button"
+    },
+    {
+     "text": "图层管理器...Ctrl+L",
+     "kind": "button"
+    },
+    {
+     "text": "铺铜管理器...",
+     "kind": "button"
+    },
+    {
+     "text": "3D模型管理器...",
+     "kind": "button"
+    },
+    {
+     "text": "引脚延迟管理器...",
+     "kind": "button"
+    },
+    {
+     "text": "交换(W)",
+     "kind": "submenu-unexpanded"
+    },
+    {
+     "text": "IPC/DAC-2552属性...",
+     "kind": "button"
+    },
+    {
+     "text": "电路计算器...",
+     "kind": "button"
+    },
+    {
+     "text": "嘉立创SMT选型工具...",
+     "kind": "button"
+    },
+    {
+     "text": "焊接辅助工具...",
+     "kind": "button"
+    },
+    {
+     "text": "网表对比...",
+     "kind": "button"
+    },
+    {
+     "text": "PCB对比...",
+     "kind": "button"
+    }
+   ]
+  }
+ ]
+}

@@ -104,6 +104,7 @@ export function globalHelp(): string[] {
     "    cdp        带 CDP 调试端口启动 / 管理立创EDA专业版",
     "    bridge     EasyEDA AI Bridge 服务管理",
     "    mcp        以 stdio 运行 MCP 服务 / 列出工具",
+    ...DOMAIN_GROUPS.map((g) => `    ${g.name.padEnd(10)} ${g.summary}`),
     "",
     paint.white("  等价写法:"),
     "    lceda-cdp <动作>        等价于 lceda-connect cdp <动作>",
@@ -135,6 +136,14 @@ export function cdpHelp(): string[] {
     "    status      查看受管实例与端点状态（默认动作）",
     "    endpoint    只打印当前 CDP 端点与 WebSocket 地址",
     "    stop        停止本工具启动的实例（需 --yes）",
+    "",
+    paint.white("  CDP 客户端动作（连到已开启调试端口的客户端）:"),
+    "    discover    发现调试端点（含 DevToolsActivePort uuid 归属校验）",
+    "    targets     列出页面 target；frames 打印 iframe 树",
+    "    eval        在编辑器页面里求值（默认拒绝有副作用的表达式）",
+    "    shot        截图落盘",
+    "    docs        文档列表 / 当前文档 / 打开文档",
+    paint.gray("    （lceda-cdp eval --help 查看这些动作的详细参数）"),
     "",
     paint.white("  选项:"),
     ...formatOptions(CDP_OPTIONS),
@@ -175,6 +184,35 @@ export function bridgeHelp(): string[] {
     "",
   ];
 }
+
+/** 领域命令的统一签名：argv 不含命令组名本身。 */
+export type DomainRunner = (
+  argv: readonly string[],
+  io: Io,
+  env: NodeJS.ProcessEnv,
+) => Promise<number>;
+
+export interface DomainGroup {
+  name: string;
+  summary: string;
+  load: () => Promise<DomainRunner>;
+}
+
+/**
+ * 由合并进来的各源仓库提供的命令组。按需动态加载，避免 cdp/bridge 这类常用命令
+ * 启动时把所有领域模块都读进来。
+ */
+export const DOMAIN_GROUPS: readonly DomainGroup[] = [];
+
+/** cdp 命令组里由 CDP 客户端（src/cdp）处理的动作，其余仍归启动器。 */
+export const CDP_CLIENT_ACTIONS: readonly string[] = [
+  "discover",
+  "targets",
+  "frames",
+  "eval",
+  "shot",
+  "docs",
+];
 
 export function mcpHelp(): string[] {
   return [
@@ -253,6 +291,12 @@ export async function main(options: MainOptions): Promise<number> {
     return await runMcpGroup(rest, io, env);
   }
 
+  const domain = DOMAIN_GROUPS.find((g) => g.name === first);
+  if (domain) {
+    const run = await domain.load();
+    return await run(rest, io, env);
+  }
+
   let group: "cdp" | "bridge";
   let tail: string[];
 
@@ -269,6 +313,12 @@ export async function main(options: MainOptions): Promise<number> {
     io.err(paint.red(`  不认识的命令: ${first}`));
     print(io, globalHelp());
     return 1;
+  }
+
+  const clientAction = tail[0]?.trim().toLowerCase() ?? "";
+  if (group === "cdp" && CDP_CLIENT_ACTIONS.includes(clientAction)) {
+    const { runCdpClientCommand } = await import("./cdp/cli.ts");
+    return await runCdpClientCommand(tail, io, env);
   }
 
   const helpRequested =

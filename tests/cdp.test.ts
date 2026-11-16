@@ -13,6 +13,7 @@ import {
   formatDebugFlagRows,
   listDevToolsActivePortFiles,
   mainInstancePids,
+  parseDevToolsActivePortRecord,
   parsePidRecord,
   readManagedPidFile,
   readPidRecord,
@@ -278,5 +279,31 @@ test("listDevToolsActivePortFiles 只扫 LCEDA/EasyEDA 目录下的 cache.*", ()
     expect(listDevToolsActivePortFiles(path.join(localAppData, "missing-root"))).toEqual([]);
   } finally {
     fs.rmSync(localAppData, { recursive: true, force: true });
+  }
+});
+
+// ─── DevToolsActivePort 第 2 行：browser uuid ──────────────────────
+
+test("parseDevToolsActivePortRecord 在端口之外同时解析第 2 行 browser uuid", () => {
+  expect(parseDevToolsActivePortRecord("9222\n/devtools/browser/abc-123\n")).toEqual({
+    port: 9222,
+    uuid: "abc-123",
+  });
+  // BOM / CRLF 与结尾斜杠都要容忍
+  expect(parseDevToolsActivePortRecord("\uFEFF9333\r\n/devtools/browser/def/\r\n")).toEqual({
+    port: 9333,
+    uuid: "def",
+  });
+  // 只有端口行：uuid 为空串，端口仍然可用
+  expect(parseDevToolsActivePortRecord("9444\n")).toEqual({ port: 9444, uuid: "" });
+  expect(parseDevToolsActivePortRecord("")).toEqual({ port: 0, uuid: "" });
+  expect(parseDevToolsActivePortRecord("not-a-port\n/devtools/browser/x")).toEqual({
+    port: 0,
+    uuid: "x",
+  });
+
+  // 端口口径必须与 core/netprobe 既有实现完全一致（现有行为不变）
+  for (const text of ["9222\n/devtools/browser/a\n", "\uFEFF9222\r\nx\r\n", "0\n", "garbage"]) {
+    expect(parseDevToolsActivePortRecord(text).port).toBe(parseDevToolsActivePort(text));
   }
 });

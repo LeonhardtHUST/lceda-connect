@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { CdpConfig } from "../core/config.ts";
+import { parseBrowserUuidLine } from "../cdp/discover.ts";
 import { run } from "../core/exec.ts";
 import { ensureDir, exists, listDirs, readText, removeFile, writeText } from "../core/fsx.ts";
 import type { Io } from "../core/io.ts";
@@ -288,7 +289,7 @@ export function endpointUrl(host: string, port: number): string {
 }
 
 /**
- * 扫 %LOCALAPPDATA% 下名字以 LCEDA / EasyEDA 开头的目录，找其 cache.* 子目录里的
+ * 扫描 %LOCALAPPDATA% 下名字以 LCEDA / EasyEDA 开头的目录，找其 cache.* 子目录里的
  * DevToolsActivePort（Chromium 自己写下来的实际端口）。只在 port<=0（让客户端
  * 自己挑端口）时用得上。
  */
@@ -307,6 +308,30 @@ export function listDevToolsActivePortFiles(localAppData: string): string[] {
   return files;
 }
 
+/** DevToolsActivePort 的两行内容：第 1 行端口，第 2 行 `/devtools/browser/<uuid>`。 */
+export interface DevToolsActivePortRecord {
+  port: number;
+  /** 文件记录的 browser uuid；第二行缺失或不是标准路径时为空串。 */
+  uuid: string;
+}
+
+/**
+ * 解析 DevToolsActivePort：端口沿用 core/netprobe 的实现（保持既有行为），
+ * uuid 取第二行 `/devtools/browser/<uuid>` 的最后一段。
+ *
+ * 为什么要 uuid：端口文件可能是上次运行、甚至另一个 profile 留下的过期文件；
+ * 只有 uuid 与 `/json/version` 返回的一致，才能确认是当前实例。
+ */
+export function parseDevToolsActivePortRecord(text: string): DevToolsActivePortRecord {
+  return { port: parseDevToolsActivePort(text), uuid: parseBrowserUuidLine(secondLine(text)) };
+}
+
+/** 取第 2 行（保留空行语义：只有一行时返回空串），去掉 BOM。 */
+function secondLine(text: string): string {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
+  return lines[1] ?? "";
+}
+
 /**
  * 解析当前活动端口：先探配置端口（/json/version 里有 Browser 才算），
  * 否则再扫 DevToolsActivePort。探不到返回 0。
@@ -317,10 +342,10 @@ async function resolveActivePort(cfg: CdpConfig, env: NodeJS.ProcessEnv): Promis
     return info ? cfg.port : 0;
   }
   for (const file of listDevToolsActivePortFiles(env.LOCALAPPDATA ?? "")) {
-    const port = parseDevToolsActivePort(readText(file) ?? "");
-    if (port <= 0) continue;
-    const info = await probeCdpVersion(port, cfg.bindHost);
-    if (info) return port;
+    const record = parseDevToolsActivePortRecord(readText(file) ?? "");
+    if (record.port <= 0) continue;
+    const info = await probeCdpVersion(record.port, cfg.bindHost);
+    if (info) return record.port;
   }
   return 0;
 }
