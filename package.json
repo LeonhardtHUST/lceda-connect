@@ -36,9 +36,15 @@
     "dev": "vp pack --watch",
     "test": "vp test",
     "check": "vp check",
-    "prepublishOnly": "vp run build"
+    "prepublishOnly": "vp run build",
+    "prepare": "vp config --no-agent",
+    "hooks:install": "vp hooks enable",
+    "hooks:uninstall": "vp hooks disable",
+    "commitlint": "commitlint"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
     "@types/node": "^26.6.5",
     "typescript": "^7.0.2",
     "vite-plus": "^1.6.0"

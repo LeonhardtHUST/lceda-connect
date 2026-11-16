@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Git 钩子脚本由 sh 执行，必须是 LF
+.vite-hooks/** text eol=lf
+*.mjs text eol=lf

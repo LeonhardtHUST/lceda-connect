@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# 提交信息校验（Conventional Commits + 中文简述）。
+#
+# 由 Vite+ 的 Git 钩子转发器调用：git 触发 .vite-hooks/_/commit-msg →
+# 转发到本文件，$1 是本次提交信息所在的临时文件路径。
+# 转发器会把 node_modules/.bin 加进 PATH，所以这里能直接找到 commitlint。
+#
+# 安装：`pnpm install` 时由 prepare 脚本（vp config）自动安装；
+#       也可手动执行 `pnpm run hooks:install`。
+# 临时跳过：`VP_GIT_HOOKS=0 git commit -m "..."`。
+
+if ! command -v commitlint >/dev/null 2>&1; then
+  echo "[commitlint] 未找到 commitlint，请先在仓库根目录执行：pnpm install" >&2
+  exit 1
+fi
+
+commitlint --edit "$1"
