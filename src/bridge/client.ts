@@ -128,12 +128,7 @@ async function request(
     if (cause.name === "TimeoutError" || cause.name === "AbortError") {
       throw new BridgeClientError("TIMEOUT", `请求 ${pathName} 超时（${timeoutMs}ms）`);
     }
-    if (
-      cause.code === "ECONNREFUSED" ||
-      cause.code === "ECONNRESET" ||
-      cause.code === "EHOSTUNREACH" ||
-      cause.code === "ENOTFOUND"
-    ) {
+    if (cause.code === "ECONNREFUSED") {
       throw new BridgeClientError(
         "NO_BRIDGE",
         `端口 ${port} 没有可用的 bridge（${cause.message}）`,
