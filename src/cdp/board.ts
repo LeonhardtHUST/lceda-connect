@@ -82,6 +82,7 @@ export interface BoardOptions {
   /** 允许的文档类型；PCB 动词传 "pcb"，文档切换传 null。 */
   docType?: string | readonly string[] | null;
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
 }
 
 export interface BoardInit {
@@ -105,7 +106,11 @@ export class Board {
   static async open(options: BoardOptions = {}): Promise<Board> {
     const host = options.host ?? DEFAULT_CDP_HOST;
     const match = options.match ?? "";
-    const endpoint = await resolveEndpoint(host, { port: options.port, env: options.env });
+    const endpoint = await resolveEndpoint(host, {
+      port: options.port,
+      env: options.env,
+      signal: options.signal,
+    });
     if (!endpoint) {
       throw new BoardError(
         `找不到 CDP 端点（端口 ${options.port ?? "自动发现"}）：客户端可能没带 ` +
@@ -114,7 +119,7 @@ export class Board {
       );
     }
 
-    const targets = await listTargets(host, endpoint.port);
+    const targets = await listTargets(host, endpoint.port, undefined, options.signal);
     const page = selectBoardPage(targets, match, options);
 
     const wsUrl = page.webSocketDebuggerUrl;
@@ -122,7 +127,7 @@ export class Board {
       throw new BoardError("选中的 page 没有 webSocketDebuggerUrl", { code: "PAGE_SELECTION" });
     }
 
-    const session = await CdpSession.connect(wsUrl, { env: options.env });
+    const session = await CdpSession.connect(wsUrl, { env: options.env, signal: options.signal });
     try {
       await session.call("Page.enable");
     } catch (error) {

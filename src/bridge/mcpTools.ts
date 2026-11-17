@@ -16,7 +16,12 @@ import {
   selectWindow,
   windows,
 } from "./client.ts";
-import { BRIDGE_PORT_END, BRIDGE_PORT_START, BRIDGE_SERVICE_ID } from "./protocol.ts";
+import {
+  BRIDGE_MAX_CODE_BYTES,
+  BRIDGE_PORT_END,
+  BRIDGE_PORT_START,
+  BRIDGE_SERVICE_ID,
+} from "./protocol.ts";
 
 /**
  * bridge 相关的 MCP 工具。
@@ -49,6 +54,7 @@ export const bridgeStatusTool = defineTool({
       portFirst,
       portLast,
       host: ctx.cfg.bridge.bindHost,
+      signal: ctx.signal,
     });
     if (!endpoint) {
       return {
@@ -82,14 +88,22 @@ export const bridgeWindowsTool = defineTool({
   handler: async (_args, ctx) => {
     try {
       const [portFirst, portLast] = portRange(ctx);
-      const endpoint = await discover({ portFirst, portLast, host: ctx.cfg.bridge.bindHost });
+      const endpoint = await discover({
+        portFirst,
+        portLast,
+        host: ctx.cfg.bridge.bindHost,
+        signal: ctx.signal,
+      });
       if (!endpoint) {
         throw new BridgeClientError(
           "NO_BRIDGE",
           `端口区间 ${portFirst}-${portLast} 里没有 ${BRIDGE_SERVICE_ID}`,
         );
       }
-      const list = await windows(endpoint.port, { host: ctx.cfg.bridge.bindHost });
+      const list = await windows(endpoint.port, {
+        host: ctx.cfg.bridge.bindHost,
+        signal: ctx.signal,
+      });
       return { port: endpoint.port, ...list };
     } catch (error) {
       rethrow(error);
@@ -114,14 +128,22 @@ export const bridgeSelectWindowTool = defineTool({
   handler: async ({ windowId }, ctx) => {
     try {
       const [portFirst, portLast] = portRange(ctx);
-      const endpoint = await discover({ portFirst, portLast, host: ctx.cfg.bridge.bindHost });
+      const endpoint = await discover({
+        portFirst,
+        portLast,
+        host: ctx.cfg.bridge.bindHost,
+        signal: ctx.signal,
+      });
       if (!endpoint) {
         throw new BridgeClientError(
           "NO_BRIDGE",
           `端口区间 ${portFirst}-${portLast} 里没有 ${BRIDGE_SERVICE_ID}`,
         );
       }
-      const result = await selectWindow(endpoint.port, windowId, { host: ctx.cfg.bridge.bindHost });
+      const result = await selectWindow(endpoint.port, windowId, {
+        host: ctx.cfg.bridge.bindHost,
+        signal: ctx.signal,
+      });
       return {
         port: endpoint.port,
         success: true,
@@ -168,26 +190,29 @@ export const bridgeExecuteTool = defineTool({
       windowId: windowId ?? "(active)",
       code: code.length > 500 ? `${code.slice(0, 500)}…` : code,
     });
-    if (!/\breturn\b/.test(code)) {
-      throw new ToolError(
-        "CODE_SHAPE",
-        "code 必须是 `async function(eda){ ... }` 的函数体，并用 return 返回结果。",
-      );
+    if (Buffer.byteLength(code, "utf8") > BRIDGE_MAX_CODE_BYTES) {
+      throw new ToolError("CODE_TOO_LARGE", `code 超过 ${BRIDGE_MAX_CODE_BYTES} 字节上限。`);
     }
     try {
       const [portFirst, portLast] = portRange(ctx);
-      const endpoint = await discover({ portFirst, portLast, host: ctx.cfg.bridge.bindHost });
+      const endpoint = await discover({
+        portFirst,
+        portLast,
+        host: ctx.cfg.bridge.bindHost,
+        signal: ctx.signal,
+      });
       if (!endpoint) {
         throw new BridgeClientError(
           "NO_BRIDGE",
           `端口区间 ${portFirst}-${portLast} 里没有 ${BRIDGE_SERVICE_ID}`,
         );
       }
-      await requireConnected(endpoint.port, { host: ctx.cfg.bridge.bindHost });
+      await requireConnected(endpoint.port, { host: ctx.cfg.bridge.bindHost, signal: ctx.signal });
       const result = await execute(endpoint.port, code, {
         windowId,
         timeoutMs,
         host: ctx.cfg.bridge.bindHost,
+        signal: ctx.signal,
       });
       return {
         port: endpoint.port,
@@ -195,6 +220,7 @@ export const bridgeExecuteTool = defineTool({
         result,
       };
     } catch (error) {
+      if (ctx.signal.aborted) throw new ToolError("CANCELLED", "bridge 请求已取消");
       rethrow(error);
     }
   },

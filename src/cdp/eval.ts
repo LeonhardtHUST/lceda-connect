@@ -102,12 +102,17 @@ export interface EvalOutcome {
 export async function evaluateExpression(
   session: CdpSession,
   expression: string,
+  signal?: AbortSignal,
 ): Promise<EvalOutcome> {
-  const result = await session.call<Record<string, unknown>>("Runtime.evaluate", {
-    expression,
-    returnByValue: true,
-    awaitPromise: true,
-  });
+  const result = await session.call<Record<string, unknown>>(
+    "Runtime.evaluate",
+    {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    },
+    signal,
+  );
   const exception = result.exceptionDetails;
   if (exception !== undefined && exception !== null) {
     const details = exception as {
@@ -132,7 +137,11 @@ export async function evaluateExpression(
 /**
  * 按计划求值：ui 上下文先过顶层 UI 判据（读错 document 会把对话框数静默变成 0）。
  */
-export async function evaluateInContext(session: CdpSession, plan: EvalPlan): Promise<EvalOutcome> {
+export async function evaluateInContext(
+  session: CdpSession,
+  plan: EvalPlan,
+  signal?: AbortSignal,
+): Promise<EvalOutcome> {
   if (plan.context === "ui") await probeUiShell(session);
-  return await evaluateExpression(session, plan.expression);
+  return await evaluateExpression(session, plan.expression, signal);
 }

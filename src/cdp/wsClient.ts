@@ -24,10 +24,16 @@ export const WS_OPCODE = {
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 /** 单帧长度上限：CDP 的单条消息远小于这个数，超出说明帧头已经坏了。 */
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
+const MAX_MESSAGE_BYTES = 64 * 1024 * 1024;
+const MAX_MESSAGE_QUEUE = 1024;
+const MAX_HANDSHAKE_BYTES = 64 * 1024;
 
 export interface WsFrame {
   fin: boolean;
   opcode: number;
+  rsv1: boolean;
+  rsv2: boolean;
+  rsv3: boolean;
   /** 已去掩码（服务端帧通常不掩码，客户端帧一定会掩码）。 */
   payload: Buffer;
 }
@@ -110,6 +116,9 @@ export function decodeWsFrame(buffer: Buffer): DecodedFrame | null {
   const first = buffer[0];
   const second = buffer[1];
   const fin = (first & 0x80) !== 0;
+  const rsv1 = (first & 0x40) !== 0;
+  const rsv2 = (first & 0x20) !== 0;
+  const rsv3 = (first & 0x10) !== 0;
   const opcode = first & 0x0f;
   const masked = (second & 0x80) !== 0;
 
@@ -129,6 +138,13 @@ export function decodeWsFrame(buffer: Buffer): DecodedFrame | null {
     length = Number(big);
   }
 
+  if (rsv1 || rsv2 || rsv3 || ![0, 1, 2, 8, 9, 10].includes(opcode)) {
+    throw new CdpError("WS_PROTOCOL", "WebSocket RSV 位或 opcode 非法");
+  }
+  if (length > MAX_FRAME_BYTES || (opcode >= 8 && (!fin || length > 125))) {
+    throw new CdpError("WS_PROTOCOL", "WebSocket 帧长度或控制帧 FIN 非法");
+  }
+
   let maskKey: Buffer | null = null;
   if (masked) {
     if (buffer.length < offset + 4) return null;
@@ -140,7 +156,7 @@ export function decodeWsFrame(buffer: Buffer): DecodedFrame | null {
   const raw = buffer.subarray(offset, offset + length);
   const payload = maskKey ? maskPayload(raw, maskKey) : raw;
   return {
-    frame: { fin, opcode, payload },
+    frame: { fin, opcode, rsv1, rsv2, rsv3, payload },
     rest: buffer.subarray(offset + length),
   };
 }
@@ -168,6 +184,7 @@ export class WsFrameParser {
 interface PendingReceive {
   resolve: (text: string) => void;
   reject: (error: Error) => void;
+  cleanup?: () => void;
 }
 
 export interface WsClientOptions {
@@ -176,6 +193,7 @@ export interface WsClientOptions {
   /** 形如 /devtools/browser/<uuid> 的路径（含查询串）。 */
   path: string;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 20_000;
@@ -192,6 +210,8 @@ export class WsClient {
   private readonly pending: PendingReceive[] = [];
   private readonly messages: string[] = [];
   private fragments: Buffer[] = [];
+  private fragmentOpcode: number | null = null;
+  private fragmentBytes = 0;
   private failure: Error | null = null;
   private closed = false;
 
@@ -207,6 +227,10 @@ export class WsClient {
     const key = randomBytes(16).toString("base64");
     const socket = net.createConnection({ host: options.host, port: options.port });
     socket.setNoDelay(true);
+    if (options.signal?.aborted) {
+      socket.destroy();
+      throw new CdpError("CANCELLED", "WebSocket 连接已取消");
+    }
 
     const request =
       `GET ${options.path} HTTP/1.1\r\n` +
@@ -218,7 +242,7 @@ export class WsClient {
 
     let leftover: Buffer;
     try {
-      leftover = await performHandshake(socket, request, key, timeoutMs);
+      leftover = await performHandshake(socket, request, key, timeoutMs, options.signal);
     } catch (error) {
       socket.destroy();
       throw error;
@@ -232,12 +256,23 @@ export class WsClient {
   }
 
   /** 等一条完整文本消息；断连/关闭时 reject。 */
-  recvText(): Promise<string> {
+  recvText(signal?: AbortSignal): Promise<string> {
+    if (signal?.aborted) return Promise.reject(new CdpError("CANCELLED", "WebSocket 接收已取消"));
     if (this.failure) return Promise.reject(this.failure);
     const queued = this.messages.shift();
     if (queued !== undefined) return Promise.resolve(queued);
     return new Promise<string>((resolve, reject) => {
-      this.pending.push({ resolve, reject });
+      const waiter: PendingReceive = { resolve, reject };
+      if (signal) {
+        const onAbort = (): void => {
+          const index = this.pending.indexOf(waiter);
+          if (index >= 0) this.pending.splice(index, 1);
+          reject(new CdpError("CANCELLED", "WebSocket 接收已取消"));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        waiter.cleanup = () => signal.removeEventListener("abort", onAbort);
+      }
+      this.pending.push(waiter);
     });
   }
 
@@ -284,7 +319,7 @@ export class WsClient {
       try {
         frame = this.parser.next();
       } catch (error) {
-        this.fail(error instanceof Error ? error : new CdpError("WS_PROTOCOL", String(error)));
+        this.protocolFail(error instanceof Error ? error.message : String(error));
         return;
       }
       if (!frame) return;
@@ -293,40 +328,85 @@ export class WsClient {
   }
 
   private handleFrame(frame: WsFrame): void {
-    switch (frame.opcode) {
-      case WS_OPCODE.close:
-        this.socket.end();
-        this.fail(new CdpError("WS_CLOSED", "WebSocket 被对端关闭"));
+    if (frame.opcode >= 8) {
+      if (!frame.fin || frame.payload.length > 125) {
+        this.protocolFail("WebSocket 控制帧非法");
         return;
-      case WS_OPCODE.ping:
-        // 对端探活：原样回 payload，CDP 服务不会主动 ping，但代理/中间层可能会。
-        this.sendFrame(WS_OPCODE.pong, frame.payload);
+      }
+      switch (frame.opcode) {
+        case WS_OPCODE.close:
+          this.socket.end();
+          this.fail(new CdpError("WS_CLOSED", "WebSocket 被对端关闭"));
+          return;
+        case WS_OPCODE.ping:
+          this.sendFrame(WS_OPCODE.pong, frame.payload);
+          return;
+        case WS_OPCODE.pong:
+          return;
+        default:
+          this.protocolFail("WebSocket 控制 opcode 非法");
+          return;
+      }
+    }
+    if (frame.opcode === WS_OPCODE.continuation) {
+      if (this.fragmentOpcode === null) {
+        this.protocolFail("未开启分片时收到 continuation");
         return;
-      case WS_OPCODE.pong:
+      }
+      this.fragments.push(frame.payload);
+      this.fragmentBytes += frame.payload.length;
+    } else if (frame.opcode === WS_OPCODE.text || frame.opcode === WS_OPCODE.binary) {
+      if (this.fragmentOpcode !== null) {
+        this.protocolFail("分片中途收到新的数据帧");
         return;
-      case WS_OPCODE.text:
-        this.fragments = [frame.payload];
-        break;
-      case WS_OPCODE.continuation:
-        this.fragments.push(frame.payload);
-        break;
-      case WS_OPCODE.binary:
-        // CDP 只用文本；二进制帧忽略（继续等文本，不要拼进 JSON）
-        this.fragments = [];
-        return;
-      default:
-        return;
+      }
+      this.fragmentOpcode = frame.opcode;
+      this.fragments = [frame.payload];
+      this.fragmentBytes = frame.payload.length;
+    } else {
+      this.protocolFail("WebSocket 数据 opcode 非法");
+      return;
+    }
+    if (this.fragmentBytes > MAX_MESSAGE_BYTES) {
+      this.protocolFail("WebSocket 单条消息超过 64 MiB");
+      return;
     }
     if (!frame.fin) return;
-    const text = Buffer.concat(this.fragments).toString("utf8");
+    const opcode = this.fragmentOpcode;
+    const payload = Buffer.concat(this.fragments);
     this.fragments = [];
-    this.deliver(text);
+    this.fragmentOpcode = null;
+    this.fragmentBytes = 0;
+    if (opcode !== WS_OPCODE.text) return;
+    this.deliver(payload.toString("utf8"));
+  }
+
+  private protocolFail(message: string): void {
+    const error = new CdpError("WS_PROTOCOL", message, { details: { closeCode: 1002 } });
+    try {
+      if (this.socket.writable)
+        this.socket.write(
+          encodeWsFrame(WS_OPCODE.close, Buffer.from([0x03, 0xea]), { mask: true }),
+        );
+    } catch {
+      // ignore
+    }
+    this.fail(error);
+    this.socket.destroy();
   }
 
   private deliver(text: string): void {
     const waiter = this.pending.shift();
-    if (waiter) waiter.resolve(text);
-    else this.messages.push(text);
+    if (waiter) {
+      waiter.cleanup?.();
+      waiter.resolve(text);
+    } else {
+      if (this.messages.length >= MAX_MESSAGE_QUEUE) {
+        this.protocolFail("WebSocket 未消费消息队列超过 1024 条");
+        return;
+      }
+      this.messages.push(text);
+    }
   }
 
   private sendFrame(opcode: number, payload: Buffer): void {
@@ -343,7 +423,10 @@ export class WsClient {
   }
 
   private rejectPending(error: Error): void {
-    for (const waiter of this.pending.splice(0)) waiter.reject(error);
+    for (const waiter of this.pending.splice(0)) {
+      waiter.cleanup?.();
+      waiter.reject(error);
+    }
   }
 }
 
@@ -352,10 +435,13 @@ function performHandshake(
   request: string,
   key: string,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     let settled = false;
     let buffer = Buffer.alloc(0);
+
+    const onAbort = (): void => finish(new CdpError("CANCELLED", "WebSocket 握手已取消"));
 
     const timer = setTimeout(() => {
       finish(new CdpError("CDP_TIMEOUT", `WebSocket 握手超时（${timeoutMs}ms）`, { exitCode: 4 }));
@@ -368,6 +454,7 @@ function performHandshake(
       socket.off("data", onData);
       socket.off("error", onError);
       socket.off("close", onClose);
+      signal?.removeEventListener("abort", onAbort);
     };
 
     const finish = (error: Error | null, leftover?: Buffer): void => {
@@ -390,6 +477,13 @@ function performHandshake(
     const onData = (chunk: Buffer): void => {
       buffer = Buffer.concat([buffer, chunk]);
       const headEnd = buffer.indexOf("\r\n\r\n");
+      if (
+        (headEnd < 0 && buffer.length > MAX_HANDSHAKE_BYTES) ||
+        headEnd + 4 > MAX_HANDSHAKE_BYTES
+      ) {
+        finish(new CdpError("WS_PROTOCOL", "WebSocket 握手响应头超过 64 KiB"));
+        return;
+      }
       if (headEnd < 0) return;
       const head = buffer.subarray(0, headEnd).toString("latin1");
       const rest = buffer.subarray(headEnd + 4);
@@ -412,5 +506,6 @@ function performHandshake(
     socket.on("data", onData);
     socket.once("error", onError);
     socket.once("close", onClose);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }

@@ -127,7 +127,7 @@ test("exeMatches 大小写/斜杠不敏感，读不到镜像路径时不误判",
   // 真的换了进程（PID 复用）→ 不一致
   expect(exeMatches("C:\\Windows\\System32\\notepad.exe", recorded)).toBe(false);
   // 读不到镜像路径（权限不足）或记录里没有 exe → 不断言不一致
-  expect(exeMatches(null, recorded)).toBe(true);
+  expect(exeMatches(null, recorded)).toBe(false);
   expect(exeMatches(recorded, "")).toBe(true);
 });
 

@@ -58,6 +58,7 @@ function execContext(args: CommonArgs, ctx: ToolContext): ExecContext {
     match: args.match,
     windowId: args.windowId,
     timeoutMs: args.timeoutMs,
+    signal: ctx.signal,
   });
 }
 
@@ -147,14 +148,20 @@ export const edaReadBoardTool = defineTool({
     timeoutMs: TIMEOUT_FIELD,
     outDir: OUT_DIR_FIELD,
   },
-  annotations: { readOnlyHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   handler: async (args, ctx) => {
     try {
+      await ctx.progress(0, 3, "读取 PCB 板面状态");
       const result = await readBoardState(execContext(args, ctx), {
-        outDir: args.outDir,
-        command: "eda_read_board",
+        outDir: args.outDir === undefined ? undefined : await ctx.resolveWritePath(args.outDir),
         timeoutMs: args.timeoutMs,
       });
+      await ctx.progress(3, 3, "PCB 板面状态读取完成");
       return {
         channel: result.channel,
         attempts: result.attempts,
@@ -174,18 +181,23 @@ export const edaRunDrcTool = defineTool({
     "在 PCB 上跑一次 DRC（只读，不改板）：调用 pcb_Drc.check(false, true, true)，返回按类别分组的统计，" +
     "并对展平叶子做 D10 去重（身份四元组精确分组，坐标只在组内容差聚类）与指纹。" +
     "成败只认回读：readback.probe_complete=false 或 count_mismatch=true 时读数不可信，不要报「DRC 通过」；" +
-    "drc_dup_removed 是主探针，只说明重复条数，不代表错误消失。DRC 一次要数秒，超时默认放宽到 180 秒。",
+    "drc_dup_removed 是主探针，只说明重复条数，不代表错误消失。DRC 一次要数秒，超时默认放宽到 180 秒；可能在编辑器里留下 DRC 标记。",
   input: {
     match: MATCH_FIELD,
     windowId: WINDOW_FIELD,
     timeoutMs: TIMEOUT_FIELD,
     outDir: OUT_DIR_FIELD,
   },
-  annotations: { readOnlyHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   handler: async (args, ctx) => {
     try {
       const result = await runDrc(execContext(args, ctx), {
-        outDir: args.outDir,
+        outDir: args.outDir === undefined ? undefined : await ctx.resolveWritePath(args.outDir),
         command: "eda_run_drc",
         timeoutMs: args.timeoutMs,
       });
@@ -226,11 +238,16 @@ export const edaBoardDigestTool = defineTool({
       .optional()
       .describe("可选：baseline 文件路径或 snapshot_key；用来判断 pass/fail/unjudgeable"),
   },
-  annotations: { readOnlyHint: true, openWorldHint: false },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   handler: async (args, ctx) => {
     try {
       const result = await boardDigestState(execContext(args, ctx), {
-        outDir: args.outDir,
+        outDir: args.outDir === undefined ? undefined : await ctx.resolveWritePath(args.outDir),
         command: "eda_board_digest",
         timeoutMs: args.timeoutMs,
         baseline: args.baseline,
@@ -274,14 +291,15 @@ export const edaRouteNetsTool = defineTool({
   handler: async (args, ctx) => {
     try {
       const nets = args.nets.map((item) => item.trim()).filter((item) => item !== "");
+      await ctx.progress(0, 3, "读取布线前状态");
       requireConfirm(args.confirm, routeNetsPreview(nets));
       const result = await routeNets(execContext(args, ctx), {
         nets,
         confirm: true,
-        outDir: args.outDir,
-        command: "eda_route_nets",
+        outDir: args.outDir === undefined ? undefined : await ctx.resolveWritePath(args.outDir),
         timeoutMs: args.timeoutMs,
       });
+      await ctx.progress(3, 3, "自动布线与回读完成");
       return {
         channel: result.channel,
         attempts: result.attempts,
@@ -337,7 +355,7 @@ export const edaEvalApiTool = defineTool({
       const result = await evalApi(execContext(args, ctx), {
         code: args.code,
         confirm: true,
-        outDir: args.outDir,
+        outDir: args.outDir === undefined ? undefined : await ctx.resolveWritePath(args.outDir),
         command: "eda_eval_api",
         timeoutMs: args.timeoutMs,
       });

@@ -1061,7 +1061,7 @@ test("cdpTools 导出 8 个工具，名称与参数 schema 完整", () => {
   for (const tool of cdpTools) {
     expect(tool.description.length).toBeGreaterThan(20);
     expect(Object.keys(tool.input).length).toBeGreaterThan(0);
-    expect(tool.input).not.toHaveProperty("confirm");
+    if (tool.name !== "cdp_eval") expect(tool.input).not.toHaveProperty("confirm");
   }
 });
 
@@ -1127,7 +1127,7 @@ test("cdp_eval 与 cdp_doc_open 的领域错误在连接客户端之前返回", 
     ctx,
   );
   expect(evalResult.isError).toBe(true);
-  expect(evalResult.content[0]?.text).toContain("SIDE_EFFECTS");
+  expect(evalResult.content[0]?.text).toContain("CONFIRM_REQUIRED");
 
   const docTool = cdpTools.find((tool) => tool.name === "cdp_doc_open");
   expect(docTool).toBeDefined();

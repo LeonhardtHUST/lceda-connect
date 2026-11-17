@@ -109,12 +109,11 @@ function normalizeExePath(value: string): string {
 }
 
 /**
- * exe 校验：镜像路径与记录不一致才算「不是同一个进程」。
- * 读不到镜像路径时不断言不一致——旧脚本的 `$proc.Path` 判空分支就是这个语义，
- * 权限不足的进程不能因为读不到路径就被判成过期。
+ * exe 校验：镜像路径与记录不一致或镜像路径不可读都不算匹配，避免 PID 复用误杀。
  */
 export function exeMatches(imagePath: string | null, recordedExe: string): boolean {
-  if (!recordedExe || !imagePath) return true;
+  if (!imagePath) return false;
+  if (!recordedExe) return true;
   return normalizeExePath(imagePath) === normalizeExePath(recordedExe);
 }
 
@@ -784,7 +783,29 @@ async function runStop(options: CdpOptions, ctx: CommandContext): Promise<number
   const { cfg } = ctx;
   const reporter = new Reporter(ctx.io, options.json);
 
-  const managed = await resolveManagedProcess(cfg.cdp);
+  let managed = await resolveManagedProcess(cfg.cdp);
+  if (!managed) {
+    const record = readManagedPidFile(cfg.cdp);
+    if (record && isPidAlive(record.record.pid)) {
+      const imagePath = await readProcessImagePath(record.record.pid);
+      if (imagePath === null) {
+        if (options.force) {
+          managed = { pid: record.record.pid, exe: record.record.exe, imagePath: null };
+        } else {
+          const reason = `无法读取 PID ${record.record.pid} 的可执行路径，拒绝 stop 以避免 PID 复用误杀；请使用 --force 或手动处理。`;
+          reporter.say(reason, paint.yellow);
+          reporter.emit({
+            action: "stop",
+            ok: false,
+            stopped: false,
+            pid: record.record.pid,
+            reason,
+          });
+          return 2;
+        }
+      }
+    }
+  }
   if (!managed) {
     const stale = stalePidFile(cfg.cdp);
     if (stale) {

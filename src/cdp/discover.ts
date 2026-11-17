@@ -70,6 +70,7 @@ export interface DiscoverOptions {
   /** 直接给端口记录，跳过文件系统（测试用）。 */
   records?: readonly DevToolsPortRecord[];
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 // ─── 回环地址 ────────────────────────────────────────────────────────
@@ -201,16 +202,20 @@ export async function fetchJson<T = unknown>(
   port: number,
   route: string,
   timeoutMs: number = DEFAULT_HTTP_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<T | null> {
   if (port <= 0) return null;
   try {
     const response = await fetch(httpUrl(host, port, route), {
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+        : AbortSignal.timeout(timeoutMs),
       headers: { accept: "application/json" },
     });
     if (!response.ok) return null;
     return (await response.json()) as T;
   } catch {
+    if (signal?.aborted) throw new CdpError("CANCELLED", "CDP 探测已取消");
     return null;
   }
 }
@@ -309,6 +314,7 @@ export async function discover(
         candidate.port,
         "/json/version",
         options.timeoutMs ?? DEFAULT_HTTP_TIMEOUT_MS,
+        options.signal,
       );
       probes.set(candidate.port, payload);
     }

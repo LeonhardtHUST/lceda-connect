@@ -44,8 +44,9 @@ export async function listTargets(
   host: string,
   port: number,
   timeoutMs?: number,
+  signal?: AbortSignal,
 ): Promise<CdpTarget[]> {
-  const payload = await fetchJson<unknown>(host, port, "/json/list", timeoutMs);
+  const payload = await fetchJson<unknown>(host, port, "/json/list", timeoutMs, signal);
   if (!Array.isArray(payload)) return [];
   return payload.filter(
     (item): item is CdpTarget => item !== null && typeof item === "object" && !Array.isArray(item),

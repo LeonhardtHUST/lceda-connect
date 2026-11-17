@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-import { ToolError, defineTool, type ToolContext, type ToolDef } from "../mcp/types.ts";
+import {
+  ToolError,
+  defineTool,
+  requireConfirm,
+  type ToolContext,
+  type ToolDef,
+} from "../mcp/types.ts";
 import { Board, detectState, normalizeState } from "./board.ts";
 import {
   attributionOf,
@@ -16,7 +22,7 @@ import { activeDocument, listDocuments, openDocument } from "./docs.ts";
 import { evaluateInContext, planEval } from "./eval.ts";
 import { redact } from "./redact.ts";
 import { screenshotToFile } from "./screenshot.ts";
-import { firstSideEffectPattern, hasSideEffects } from "./sideEffects.ts";
+import { classifyEval } from "./sideEffects.ts";
 import { listTargets } from "./targets.ts";
 import { asCdpError } from "./errors.ts";
 
@@ -68,6 +74,7 @@ async function openBoard(
     index: options.index,
     docType: options.docType ?? null,
     env: ctx.env,
+    signal: ctx.signal,
   });
 }
 
@@ -78,10 +85,26 @@ function discoverView(item: DiscoverResult): Record<string, unknown> {
     profile: item.profile,
     cdp: item.cdp,
     uuidMatch: item.uuidMatch,
-    browser: versionBrowser(item.version) || null,
+    browser: redact(versionBrowser(item.version)) || null,
     attribution: attributionOf(item),
-    version: item.version,
+    version: versionView(item.version),
   };
+}
+
+function versionView(version: unknown): Record<string, unknown> | null {
+  if (version === null || typeof version !== "object" || Array.isArray(version)) return null;
+  const record = version as Record<string, unknown>;
+  const output: Record<string, unknown> = {};
+  for (const field of [
+    "Browser",
+    "Protocol-Version",
+    "User-Agent",
+    "V8-Version",
+    "webSocketDebuggerUrl",
+  ]) {
+    if (typeof record[field] === "string") output[field] = redact(record[field]);
+  }
+  return output;
 }
 
 const PORT_FIELD = z
@@ -116,6 +139,7 @@ export const cdpDiscoverTool = defineTool({
         port: portArg(args, ctx),
         scan: parseScan(args.scan),
         env: ctx.env,
+        signal: ctx.signal,
       });
       const best = output.usable[0] ?? null;
       if (!best) {
@@ -129,7 +153,7 @@ export const cdpDiscoverTool = defineTool({
       return {
         found: true,
         endpoint: endpointUrl(HOST, best.port),
-        browser: versionBrowser(best.version) || null,
+        browser: redact(versionBrowser(best.version)) || null,
         webSocketDebuggerUrl: redact(versionWebSocketUrl(best.version)) || null,
         livePorts: output.livePorts,
         results: output.results.map(discoverView),
@@ -139,6 +163,14 @@ export const cdpDiscoverTool = defineTool({
     }
   },
 });
+
+function targetView(target: Record<string, unknown>): Record<string, unknown> {
+  const output: Record<string, unknown> = {};
+  for (const field of ["id", "type", "title", "url", "webSocketDebuggerUrl"]) {
+    if (typeof target[field] === "string") output[field] = redact(target[field]);
+  }
+  return output;
+}
 
 export const cdpTargetsTool = defineTool({
   name: "cdp_targets",
@@ -151,19 +183,23 @@ export const cdpTargetsTool = defineTool({
   handler: async (args, ctx) => {
     try {
       const endpoint = requireEndpoint(
-        await resolveEndpoint(HOST, { port: portArg(args, ctx), env: ctx.env }),
+        await resolveEndpoint(HOST, {
+          port: portArg(args, ctx),
+          env: ctx.env,
+          signal: ctx.signal,
+        }),
         "端口自动发现失败",
       );
-      const targets = await listTargets(HOST, endpoint.port);
+      const targets = await listTargets(HOST, endpoint.port, undefined, ctx.signal);
       return {
         port: endpoint.port,
         endpoint: endpointUrl(HOST, endpoint.port),
         browser: versionBrowser(endpoint.version) || null,
-        targets: targets.map((target) => ({
-          ...target,
-          title: redact(String(target.title ?? "")),
-          url: redact(String(target.url ?? "")),
-        })),
+        targets: targets.map((target) => {
+          const view = targetView(target);
+          if (typeof view.title === "string") view.title = redact(view.title);
+          return view;
+        }),
       };
     } catch (error) {
       fail(error);
@@ -180,27 +216,30 @@ export const cdpEvalTool = defineTool({
     "读编辑器 API 时写 `return await A.pcb_Net.getAllNets()`；选页按 PCB 文档类型过滤。" +
     "context=ui：表达式原样求值，不注入 A、不按文档类型过滤，适合读顶层 UI DOM" +
     "（弹窗、右键菜单、工具栏）；执行前会先做顶层 UI 判据，命中 iframe/空白页直接报错。" +
-    "命中 click/fetch/赋值 等副作用模式时必须显式 allowSideEffects: true，且先取得用户同意。" +
+    "无法证明只读时必须显式 confirm: true；allowSideEffects: true 是已弃用兼容别名。" +
     "选页命中数不等于 1 时报错，不会静默取第一个。",
   input: {
     expression: z.string().min(1).describe("要执行的 JavaScript 表达式或函数体"),
     context: z.enum(["api", "ui"]).optional().describe("求值上下文：api（默认）或 ui"),
     match: MATCH_FIELD,
     index: z.number().int().min(0).optional().describe("显式 page 序号；给了就不做唯一性断言"),
-    allowSideEffects: z.boolean().optional().describe("确认表达式有副作用并允许执行"),
+    allowSideEffects: z.boolean().optional().describe("已弃用：confirm 的兼容别名"),
+    confirm: z.boolean().optional().describe("确认可能有副作用的表达式并允许执行"),
     port: PORT_FIELD,
   },
   annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
   handler: async (args, ctx) => {
     try {
       const context = args.context ?? "api";
-      if (hasSideEffects(args.expression) && !args.allowSideEffects) {
-        const pattern = firstSideEffectPattern(args.expression);
-        throw new ToolError(
-          "SIDE_EFFECTS",
-          `拒绝执行：表达式疑似有副作用（命中模式 ${pattern ?? "未知"}）。` +
-            "确认影响并取得用户同意后，以 allowSideEffects: true 重新调用。",
-        );
+      const classification = classifyEval(args.expression);
+      const confirmed = args.confirm ?? args.allowSideEffects;
+      if (!classification.readonly) {
+        requireConfirm(confirmed, {
+          expression_preview:
+            args.expression.length > 500 ? `${args.expression.slice(0, 500)}…` : args.expression,
+          reasons: classification.reasons,
+          hint: "确认影响并以 confirm: true 重新调用；allowSideEffects 是已弃用兼容别名。",
+        });
       }
       const plan = planEval(
         context === "ui"
@@ -214,7 +253,7 @@ export const cdpEvalTool = defineTool({
         docType: plan.wantDocType,
       });
       try {
-        const outcome = await evaluateInContext(board.session, plan);
+        const outcome = await evaluateInContext(board.session, plan, ctx.signal);
         return {
           context,
           page: board.title,
@@ -251,19 +290,20 @@ export const cdpScreenshotTool = defineTool({
   },
   annotations: {
     readOnlyHint: false,
-    destructiveHint: false,
+    destructiveHint: true,
     idempotentHint: false,
     openWorldHint: false,
   },
   handler: async (args, ctx) => {
     try {
+      const outputPath = await ctx.resolveWritePath(args.outPath);
       const board = await openBoard(ctx, {
         port: args.port,
         match: args.match,
         index: args.index,
       });
       try {
-        const result = await screenshotToFile(board.session, args.outPath, {
+        const result = await screenshotToFile(board.session, outputPath, {
           fit: args.fit,
           hideLayers: args.hideLayers,
         });

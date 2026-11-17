@@ -72,9 +72,12 @@ export class ChannelError extends Error {
 }
 
 export interface BridgeChannel {
-  execute(code: string, options?: { windowId?: string; timeoutMs?: number }): Promise<unknown>;
+  execute(
+    code: string,
+    options?: { windowId?: string; timeoutMs?: number; signal?: AbortSignal },
+  ): Promise<unknown>;
   /** 已注册的 EDA 窗口 id；适配器不支持时可以不实现。 */
-  listWindows?(): Promise<string[]>;
+  listWindows?(options?: { signal?: AbortSignal }): Promise<string[]>;
   /**
    * 按文档类型挑窗口（源仓库 `resolve_window`）。找不到返回 null；
    * 探测过程中的通道级故障要冒泡，不能伪装成「没有目标文档」。
@@ -82,14 +85,19 @@ export interface BridgeChannel {
   resolveWindow?(
     docTypes: readonly number[],
     probeCode: string,
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; signal?: AbortSignal },
   ): Promise<string | null>;
 }
 
 export interface CdpChannel {
   evalApi(
     body: string,
-    options?: { docTypes?: readonly number[]; match?: string; timeoutMs?: number },
+    options?: {
+      docTypes?: readonly number[];
+      match?: string;
+      timeoutMs?: number;
+      signal?: AbortSignal;
+    },
   ): Promise<unknown>;
 }
 
@@ -105,6 +113,7 @@ export interface ExecContext {
   match?: string;
   /** 单次执行超时（毫秒）。 */
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface RoutedPayload {
@@ -248,6 +257,7 @@ export async function runRouted(
           const docTypes = payload.docTypes ?? [3];
           const resolved = await bridge.resolveWindow(docTypes, DOC_PROBE_JS, {
             timeoutMs: Math.min(payload.timeoutMs ?? ctx.timeoutMs ?? 10_000, 10_000),
+            signal: ctx.signal,
           });
           if (resolved === null) {
             throw new EdaVerbError(
@@ -261,6 +271,7 @@ export async function runRouted(
         result = await bridge.execute(payload.code, {
           windowId,
           timeoutMs: payload.timeoutMs ?? ctx.timeoutMs,
+          signal: ctx.signal,
         });
       } else {
         const cdp = impl as CdpChannel;
@@ -269,6 +280,7 @@ export async function runRouted(
           docTypes: payload.docTypes,
           match: ctx.match,
           timeoutMs: payload.timeoutMs ?? ctx.timeoutMs,
+          signal: ctx.signal,
         });
       }
       attempts.push({ priority, channel, ok: true });
@@ -322,7 +334,7 @@ export class DefaultBridgeChannel implements BridgeChannel {
     this.defaultTimeoutMs = options.defaultTimeoutMs;
   }
 
-  private async port(): Promise<number> {
+  private async port(signal?: AbortSignal): Promise<number> {
     if (this.endpointPort !== null) return this.endpointPort;
     let endpoint;
     try {
@@ -330,6 +342,7 @@ export class DefaultBridgeChannel implements BridgeChannel {
         host: this.host,
         portFirst: this.portFirst,
         portLast: this.portLast,
+        signal,
       });
     } catch (error) {
       throw timeoutExitCode("bridge", error);
@@ -356,14 +369,15 @@ export class DefaultBridgeChannel implements BridgeChannel {
 
   async execute(
     code: string,
-    options: { windowId?: string; timeoutMs?: number } = {},
+    options: { windowId?: string; timeoutMs?: number; signal?: AbortSignal } = {},
   ): Promise<unknown> {
-    const port = await this.port();
+    const port = await this.port(options.signal);
     try {
       return await executeBridge(port, code, {
         host: this.host,
         windowId: options.windowId,
         timeoutMs: options.timeoutMs ?? this.defaultTimeoutMs,
+        signal: options.signal,
       });
     } catch (error) {
       this.endpointPort = null;
@@ -371,10 +385,10 @@ export class DefaultBridgeChannel implements BridgeChannel {
     }
   }
 
-  async listWindows(): Promise<string[]> {
-    const port = await this.port();
+  async listWindows(options: { signal?: AbortSignal } = {}): Promise<string[]> {
+    const port = await this.port(options.signal);
     try {
-      const listed = await bridgeWindows(port, { host: this.host });
+      const listed = await bridgeWindows(port, { host: this.host, signal: options.signal });
       return listed.windows
         .filter((item) => item.connected)
         .map((item) => item.windowId)
@@ -388,15 +402,16 @@ export class DefaultBridgeChannel implements BridgeChannel {
   async resolveWindow(
     docTypes: readonly number[],
     probeCode: string,
-    options: { timeoutMs?: number } = {},
+    options: { timeoutMs?: number; signal?: AbortSignal } = {},
   ): Promise<string | null> {
-    const windowIds = await this.listWindows();
+    const windowIds = await this.listWindows({ signal: options.signal });
     for (const windowId of windowIds) {
       let info: Record<string, unknown> | null = null;
       try {
         const raw = await this.execute(probeCode, {
           windowId,
           timeoutMs: options.timeoutMs ?? 10_000,
+          signal: options.signal,
         });
         info =
           raw !== null && typeof raw === "object" && !Array.isArray(raw)
@@ -455,10 +470,15 @@ export class DefaultCdpChannel implements CdpChannel {
 
   async evalApi(
     body: string,
-    options: { docTypes?: readonly number[]; match?: string; timeoutMs?: number } = {},
+    options: {
+      docTypes?: readonly number[];
+      match?: string;
+      timeoutMs?: number;
+      signal?: AbortSignal;
+    } = {},
   ): Promise<unknown> {
-    const endpoint = await this.endpoint();
-    const targets = await this.targets(endpoint.port);
+    const endpoint = await this.endpoint(options.signal);
+    const targets = await this.targets(endpoint.port, options.signal);
     const pages = pageCandidates(targets, options.match);
     if (pages.length === 0) {
       throw new ChannelError(
@@ -478,21 +498,24 @@ export class DefaultCdpChannel implements CdpChannel {
         session = await CdpSession.connect(String(page.webSocketDebuggerUrl), {
           env: this.env,
           timeoutMs: options.timeoutMs ?? this.defaultTimeoutMs,
+          signal: options.signal,
         });
       } catch (error) {
+        if ((error as { code?: unknown })?.code === "CANCELLED") throw error;
         lastError = error;
         continue;
       }
       try {
         let docType: number | null = null;
         try {
-          const probe = await evaluateExpression(session, DOC_PROBE_EXPR);
+          const probe = await evaluateExpression(session, DOC_PROBE_EXPR, options.signal);
           const value = probe.value;
           if (value !== null && typeof value === "object") {
             const raw = (value as Record<string, unknown>).type;
             docType = typeof raw === "number" ? raw : null;
           }
         } catch (error) {
+          if ((error as { code?: unknown })?.code === "CANCELLED") throw error;
           lastError = error;
           continue;
         }
@@ -509,7 +532,7 @@ export class DefaultCdpChannel implements CdpChannel {
           "(async()=>{const eda=globalThis._EXTAPI_ROOT_;" +
           "if(!eda) return {error:'主世界没有扩展接口'};" +
           `${body}\n})()`;
-        const outcome = await evaluateExpression(session, expression);
+        const outcome = await evaluateExpression(session, expression, options.signal);
         const value = outcome.value;
         if (
           value !== null &&
@@ -527,6 +550,7 @@ export class DefaultCdpChannel implements CdpChannel {
         return value;
       } catch (error) {
         if (error instanceof ChannelError) throw error;
+        if ((error as { code?: unknown })?.code === "CANCELLED") throw error;
         lastError = error;
       } finally {
         session.close();
@@ -550,10 +574,10 @@ export class DefaultCdpChannel implements CdpChannel {
     throw timeoutExitCode("cdp", lastError ?? new Error("CDP 求值失败"));
   }
 
-  private async endpoint(): Promise<{ port: number }> {
+  private async endpoint(signal?: AbortSignal): Promise<{ port: number }> {
     const port = this.portOption ?? defaultPortFromEnv(this.env);
     try {
-      const endpoint = await resolveEndpoint(this.host, { port, env: this.env });
+      const endpoint = await resolveEndpoint(this.host, { port, env: this.env, signal });
       if (!endpoint) {
         throw new ChannelError(
           "cdp",
@@ -564,15 +588,17 @@ export class DefaultCdpChannel implements CdpChannel {
       }
       return { port: endpoint.port };
     } catch (error) {
+      if ((error as { code?: unknown })?.code === "CANCELLED") throw error;
       if (error instanceof ChannelError) throw error;
       throw timeoutExitCode("cdp", error);
     }
   }
 
-  private async targets(port: number): Promise<CdpTarget[]> {
+  private async targets(port: number, signal?: AbortSignal): Promise<CdpTarget[]> {
     try {
-      return await listTargets(this.host, port);
+      return await listTargets(this.host, port, undefined, signal);
     } catch (error) {
+      if ((error as { code?: unknown })?.code === "CANCELLED") throw error;
       throw timeoutExitCode("cdp", error);
     }
   }
@@ -586,6 +612,7 @@ export interface DefaultExecContextOptions {
   bridgePortLast?: number;
   windowId?: string;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 /** CLI / MCP 共用的默认上下文：真 bridge + 真 CDP，首次执行才探测。 */
@@ -602,5 +629,6 @@ export function createDefaultExecContext(options: DefaultExecContextOptions = {}
     match: options.match,
     windowId: options.windowId,
     timeoutMs: options.timeoutMs,
+    signal: options.signal,
   };
 }

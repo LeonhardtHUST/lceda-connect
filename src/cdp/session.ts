@@ -1,17 +1,10 @@
+import { ToolError } from "../mcp/types.ts";
 import { CdpError } from "./errors.ts";
 import { DEFAULT_CDP_PORT, requireLoopbackHost } from "./discover.ts";
 import { WsClient } from "./wsClient.ts";
 
-/**
- * 一条绑在单个 target 上的 CDP 会话：按 id 匹配响应，error 抛错，超时可调。
- *
- * 超时口径沿用源仓库：环境变量 `EASYEDA_CDP_TIMEOUT`（秒，默认 20）。
- * 长求值（一次性爬菜单、批量读图元）会超过 20 秒，调用方自己放宽即可。
- */
-
 export const DEFAULT_CDP_TIMEOUT_MS = 20_000;
 
-/** 从环境变量读超时（秒 → 毫秒）；非法值退回 20 秒。 */
 export function cdpTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.EASYEDA_CDP_TIMEOUT;
   if (!raw) return DEFAULT_CDP_TIMEOUT_MS;
@@ -23,6 +16,7 @@ export function cdpTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
 export interface CdpSessionOptions {
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
 }
 
 interface CdpResponse {
@@ -36,20 +30,19 @@ interface CdpResponse {
 export class CdpSession {
   private readonly ws: WsClient;
   private readonly timeoutMs: number;
+  private readonly signal: AbortSignal | undefined;
   private nextId = 1;
   private closed = false;
   private failure: CdpError | null = null;
 
-  private constructor(ws: WsClient, timeoutMs: number) {
+  private constructor(ws: WsClient, timeoutMs: number, signal?: AbortSignal) {
     this.ws = ws;
     this.timeoutMs = timeoutMs;
+    this.signal = signal;
   }
 
-  /**
-   * 用 `/json/list` 给的 `webSocketDebuggerUrl` 建会话。
-   * 只接受 ws:// 回环地址——源仓库的硬边界，不做 TLS、不连别的机器。
-   */
   static async connect(wsUrl: string, options: CdpSessionOptions = {}): Promise<CdpSession> {
+    if (options.signal?.aborted) throw new ToolError("CANCELLED", "CDP 请求已取消");
     let url: URL;
     try {
       url = new URL(wsUrl);
@@ -72,37 +65,39 @@ export class CdpSession {
       port,
       path: `${url.pathname}${url.search}`,
       timeoutMs,
+      signal: options.signal,
     });
-    return new CdpSession(ws, timeoutMs);
+    return new CdpSession(ws, timeoutMs, options.signal);
   }
 
-  /** 调用一个 CDP 方法并返回 result；错误响应抛 `CDP_ERROR`。 */
   async call<T = Record<string, unknown>>(
     method: string,
     params: Record<string, unknown> = {},
+    signal?: AbortSignal,
   ): Promise<T> {
+    const activeSignal =
+      signal && this.signal ? AbortSignal.any([signal, this.signal]) : (signal ?? this.signal);
+    if (activeSignal?.aborted) throw new ToolError("CANCELLED", "CDP 请求已取消");
     if (this.closed) throw new CdpError("WS_CLOSED", "CDP 会话已关闭");
     if (this.failure) throw this.failure;
-
     const id = this.nextId;
     this.nextId += 1;
-
     const timer = setTimeout(() => {
-      const error = new CdpError(
+      this.failure = new CdpError(
         "CDP_TIMEOUT",
         `CDP 调用超时（${this.timeoutMs}ms）：${method}；可用环境变量 EASYEDA_CDP_TIMEOUT 放宽`,
         { exitCode: 4 },
       );
-      this.failure = error;
       this.ws.close();
     }, this.timeoutMs);
     timer.unref();
-
+    const onAbort = (): void => this.ws.close();
+    activeSignal?.addEventListener("abort", onAbort, { once: true });
     try {
+      if (activeSignal?.aborted) throw new ToolError("CANCELLED", "CDP 请求已取消");
       this.ws.sendText(JSON.stringify({ id, method, params }));
       for (;;) {
-        const message = parseResponse(await this.ws.recvText());
-        // 事件（没有 id）和别的请求的响应直接跳过，CDP 允许交错下发。
+        const message = parseResponse(await this.ws.recvText(activeSignal));
         if (message.id !== id) continue;
         if (message.error) {
           throw new CdpError(
@@ -114,16 +109,17 @@ export class CdpSession {
         return (message.result ?? {}) as T;
       }
     } catch (error) {
+      if (activeSignal?.aborted) throw new ToolError("CANCELLED", "CDP 请求已取消");
       if (this.failure) throw this.failure;
-      if (error instanceof CdpError) throw error;
+      if (error instanceof CdpError || error instanceof ToolError) throw error;
       const message = error instanceof Error ? error.message : String(error);
       throw new CdpError("CDP_PROTOCOL", `CDP 传输失败：${message}`, { cause: error });
     } finally {
       clearTimeout(timer);
+      activeSignal?.removeEventListener("abort", onAbort);
     }
   }
 
-  /** 关闭会话；重复调用无害。 */
   close(): void {
     if (this.closed) return;
     this.closed = true;

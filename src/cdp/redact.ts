@@ -15,11 +15,28 @@ export const SENSITIVE_PARAMS: readonly string[] = [
   "license",
   "token",
   "access_token",
+  "refresh_token",
+  "id_token",
+  "auth",
+  "authorization",
+  "key",
+  "apikey",
+  "api_key",
+  "secret",
+  "password",
+  "passwd",
+  "sessionid",
+  "sid",
+  "sig",
+  "signature",
+  "code",
+  "jwt",
   "session",
   "ticket",
 ];
 
-const PARAM_RE = new RegExp(`\\b(${SENSITIVE_PARAMS.join("|")})=[^&"'\\s>]*`, "g");
+const SENSITIVE_SET = new Set(SENSITIVE_PARAMS.map((name) => name.toLowerCase()));
+const PARAM_RE = /(^|[?&#])([A-Za-z][A-Za-z0-9_-]*)=([^&"'\s>]*)/g;
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 /** 中国大陆手机号：前后不能紧邻数字，避免把长串里的 11 位误伤。 */
 const PHONE_RE = /(?<!\d)1[3-9]\d{9}(?!\d)/g;
@@ -30,7 +47,15 @@ const PHONE_RE = /(?<!\d)1[3-9]\d{9}(?!\d)/g;
  */
 export function redact(text: string): string {
   if (!text) return text;
-  let out = text.replace(PARAM_RE, (_match, name: string) => `${name}=<REDACTED>`);
+  let out: string;
+  try {
+    out = decodeURIComponent(text);
+  } catch {
+    out = text;
+  }
+  out = out.replace(PARAM_RE, (_match, prefix: string, name: string) =>
+    SENSITIVE_SET.has(name.toLowerCase()) ? `${prefix}${name}=<REDACTED>` : _match,
+  );
   out = out.replace(EMAIL_RE, "<REDACTED>");
   out = out.replace(PHONE_RE, "<REDACTED>");
   return out;
