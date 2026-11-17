@@ -1,0 +1,437 @@
+{
+  "timestamp": "2026-11-17T05:46:25.637Z",
+  "project": "agent-drill-rc50",
+  "projectUuid": "eb9fbbc911a7432189e71aefcbb0ff69",
+  "scope": {
+    "globalConfigurationWritesPlanned": false,
+    "saveRequested": false
+  },
+  "steps": {
+    "bridgeIdentity": {
+      "project": "agent-drill-rc50",
+      "uuid": "eb9fbbc911a7432189e71aefcbb0ff69",
+      "document": "1df2fdad9f776448",
+      "documentType": 3
+    },
+    "cdpIdentity": {
+      "project": "agent-drill-rc50",
+      "uuid": "eb9fbbc911a7432189e71aefcbb0ff69",
+      "document": "1df2fdad9f776448",
+      "documentType": 3
+    },
+    "boardBefore": {
+      "lines": 66,
+      "vias": 39,
+      "comps": 6,
+      "pours": 2,
+      "nets": ["GND", "N3", "N1", "N2"],
+      "silk_count": 3,
+      "silk_hash": "88e2f8d73c27e8c0",
+      "silk_available": true,
+      "available": true,
+      "available_reasons": [],
+      "doc_type": 3,
+      "doc_type_mismatch": false,
+      "settled": true,
+      "settled_mismatch_keys": [],
+      "settled_retried": false,
+      "nets_available": true,
+      "drc_available": true,
+      "drc": 9,
+      "drc_cat": {
+        "Clearance Error": 5,
+        "Connection Error": 4
+      },
+      "drc_sub": {
+        "SMD Pad": 4,
+        "SMD Pad to SMD Pad": 3,
+        "SMD Pad to Track": 2
+      },
+      "cats": ["Clearance Error:5", "Connection Error:4"],
+      "connection_leaf_hits": 4,
+      "cats_connection_hits": 4,
+      "connection_category_drift": false,
+      "reader_id": "BOARD_READ_JS@v2",
+      "details_hash": "9fd8e3097f3c9951",
+      "details_count": 6,
+      "designator_set_hash": "7d59327e769a148b",
+      "designators_available": true,
+      "designators_count": 6,
+      "drc_dup_removed": 0,
+      "drc_count_mismatch": false,
+      "drc_leaf_hash": "464ad5cf42072316",
+      "drc_raw_leaf_count": 9,
+      "drc_leaf_count": 9,
+      "eda_counts_available": true,
+      "eda_count_total": 9,
+      "identity_incomplete": 4,
+      "coord_missing": 0,
+      "unresolved_identity": 4,
+      "unresolved_coord": 0,
+      "probes": {
+        "drc_dup_removed": 0,
+        "drc_count_mismatch": false,
+        "drc_leaf_hash": "464ad5cf42072316",
+        "probe_complete": true,
+        "unresolved_identity": 4,
+        "unresolved_coord": 0
+      },
+      "comparable": true,
+      "reasons": [],
+      "warnings": ["identity_incomplete: 4 个叶子身份字段缺失，各自独立未合并"]
+    },
+    "drc": {
+      "ok": true,
+      "channel": "bridge",
+      "attempts": [
+        {
+          "priority": 1,
+          "channel": "bridge",
+          "ok": true
+        }
+      ],
+      "total": 9,
+      "categories": [
+        {
+          "category": "Clearance Error",
+          "count": 5,
+          "items": [
+            {
+              "errorType": "Clearance Error",
+              "objType": "SMD Pad to Track",
+              "pos": {
+                "x": 47.239999999999995,
+                "y": -70
+              },
+              "objs": ["71c8c7ddb2ae954b", "4cb6cb1c42ed802ae15"],
+              "detail": {
+                "minDistance": "0mil",
+                "shouldBe": ">= 6mil",
+                "obj1": "Object 1",
+                "obj2": "object 2",
+                "type": "ClearanceError"
+              }
+            },
+            {
+              "errorType": "Clearance Error",
+              "objType": "SMD Pad to Track",
+              "pos": {
+                "x": 47.239999999999995,
+                "y": -70
+              },
+              "objs": ["71c8c7ddb2ae954b", "7c289315213da8f8e15"],
+              "detail": {
+                "minDistance": "0mil",
+                "shouldBe": ">= 6mil",
+                "obj1": "Object 1",
+                "obj2": "object 2",
+                "type": "ClearanceError"
+              }
+            },
+            {
+              "errorType": "Clearance Error",
+              "objType": "SMD Pad to SMD Pad",
+              "pos": {
+                "x": 45.6692,
+                "y": -71.77165
+              },
+              "objs": ["4cb6cb1c42ed802ae15", "25e99107d9351401e15"],
+              "detail": {
+                "minDistance": "0mil",
+                "shouldBe": ">= 4mil",
+                "obj1": "Object 1",
+                "obj2": "object 2",
+                "type": "ClearanceError"
+              }
+            },
+            {
+              "errorType": "Clearance Error",
+              "objType": "SMD Pad to SMD Pad",
+              "pos": {
+                "x": 45.6692,
+                "y": -71.77165
+              },
+              "objs": ["7c289315213da8f8e15", "25e99107d9351401e15"],
+              "detail": {
+                "minDistance": "0mil",
+                "shouldBe": ">= 4mil",
+                "obj1": "Object 1",
+                "obj2": "object 2",
+                "type": "ClearanceError"
+              }
+            },
+            {
+              "errorType": "Clearance Error",
+              "objType": "SMD Pad to SMD Pad",
+              "pos": {
+                "x": 45.6692,
+                "y": -71.77165
+              },
+              "objs": ["7c289315213da8f8e15", "4cb6cb1c42ed802ae15"],
+              "detail": {
+                "minDistance": "0mil",
+                "shouldBe": ">= 4mil",
+                "obj1": "Object 1",
+                "obj2": "object 2",
+                "type": "ClearanceError"
+              }
+            }
+          ]
+        },
+        {
+          "category": "Connection Error",
+          "count": 4,
+          "items": [
+            {
+              "errorType": "Connection Error",
+              "objType": "SMD Pad",
+              "net": "N3",
+              "pos": {
+                "x": 47.244,
+                "y": -70
+              },
+              "objs": ["7c289315213da8f8e15"],
+              "detail": {
+                "obj1": "Object 1",
+                "type": "ConnectError"
+              }
+            },
+            {
+              "errorType": "Connection Error",
+              "objType": "SMD Pad",
+              "net": "N3",
+              "pos": {
+                "x": 112.966,
+                "y": -40
+              },
+              "objs": ["2e6f3e2da3e719a7e7"],
+              "detail": {
+                "obj1": "Object 1",
+                "type": "ConnectError"
+              }
+            },
+            {
+              "errorType": "Connection Error",
+              "objType": "SMD Pad",
+              "net": "N2",
+              "pos": {
+                "x": 47.244,
+                "y": -70
+              },
+              "objs": ["4cb6cb1c42ed802ae15"],
+              "detail": {
+                "obj1": "Object 1",
+                "type": "ConnectError"
+              }
+            },
+            {
+              "errorType": "Connection Error",
+              "objType": "SMD Pad",
+              "net": "N2",
+              "pos": {
+                "x": 72.966,
+                "y": -40
+              },
+              "objs": ["5f4db957b8ed43e3e7"],
+              "detail": {
+                "obj1": "Object 1",
+                "type": "ConnectError"
+              }
+            }
+          ]
+        }
+      ],
+      "drc": 9,
+      "drc_cat": {
+        "Clearance Error": 5,
+        "Connection Error": 4
+      },
+      "drc_sub": {
+        "SMD Pad": 4,
+        "SMD Pad to SMD Pad": 3,
+        "SMD Pad to Track": 2
+      },
+      "cats": ["Clearance Error:5", "Connection Error:4"],
+      "readback": {
+        "raw_leaf_count": 9,
+        "leaf_count": 9,
+        "dup_removed": 0,
+        "count_mismatch": false,
+        "leaf_hash": "464ad5cf42072316",
+        "probe_complete": true,
+        "tol": 0.02
+      },
+      "data_trustworthy": true
+    },
+    "documents": [
+      {
+        "kind": "pcb",
+        "name": "PCB1",
+        "uuid": "1df2fdad9f776448",
+        "project": "eb9fbbc911a7432189e71aefcbb0ff69",
+        "board": "Board1_2",
+        "schematic": null
+      },
+      {
+        "kind": "sch",
+        "name": "P1",
+        "uuid": "6f1f9b1bd0cbeccc",
+        "project": null,
+        "board": null,
+        "schematic": null
+      },
+      {
+        "kind": "sch",
+        "name": "P1",
+        "uuid": "e774cb3f7dce7f97",
+        "project": null,
+        "board": null,
+        "schematic": null
+      },
+      {
+        "kind": "sch",
+        "name": "P1",
+        "uuid": "cf74f8ba3c8844e2",
+        "project": null,
+        "board": null,
+        "schematic": null
+      }
+    ],
+    "schematicOpened": {
+      "opened": true,
+      "tab_id": "6f1f9b1bd0cbeccc@eb9fbbc911a7432189e71aefcbb0ff69",
+      "kind": "sch",
+      "name": "P1",
+      "uuid": "6f1f9b1bd0cbeccc",
+      "activated": true,
+      "active_after": {
+        "kind": "sch",
+        "name": "P1",
+        "uuid": "6f1f9b1bd0cbeccc",
+        "project": null,
+        "via": "getCurrentSchematicPageInfo"
+      },
+      "focus_verified": true
+    },
+    "textPlan": {
+      "marker": "LCEDA_CONNECT_SMOKE_1794894391842",
+      "document": "6f1f9b1bd0cbeccc",
+      "beforeIds": ["a29a7f38b0a38719"]
+    },
+    "textRoundtrip": {
+      "marker": "LCEDA_CONNECT_SMOKE_1794894391842",
+      "createdId": "a7dbedb3651e9fdd",
+      "observed": true,
+      "deleted": true,
+      "failure": null,
+      "cleanupFailure": null,
+      "beforeCount": 1,
+      "afterCount": 1,
+      "restored": true
+    },
+    "residualCheck": {
+      "checked": true,
+      "ids": []
+    },
+    "pcbRestored": {
+      "opened": true,
+      "tab_id": "1df2fdad9f776448@eb9fbbc911a7432189e71aefcbb0ff69",
+      "kind": "pcb",
+      "name": "PCB1",
+      "uuid": "1df2fdad9f776448",
+      "activated": true,
+      "active_after": {
+        "kind": "pcb",
+        "name": "PCB1",
+        "uuid": "1df2fdad9f776448",
+        "project": "eb9fbbc911a7432189e71aefcbb0ff69",
+        "via": "getCurrentPcbInfo"
+      },
+      "focus_verified": true
+    },
+    "boardAfter": {
+      "lines": 66,
+      "vias": 39,
+      "comps": 6,
+      "pours": 2,
+      "nets": ["GND", "N3", "N1", "N2"],
+      "silk_count": 3,
+      "silk_hash": "88e2f8d73c27e8c0",
+      "silk_available": true,
+      "available": true,
+      "available_reasons": [],
+      "doc_type": 3,
+      "doc_type_mismatch": false,
+      "settled": true,
+      "settled_mismatch_keys": [],
+      "settled_retried": false,
+      "nets_available": true,
+      "drc_available": true,
+      "drc": 9,
+      "drc_cat": {
+        "Clearance Error": 5,
+        "Connection Error": 4
+      },
+      "drc_sub": {
+        "SMD Pad": 4,
+        "SMD Pad to SMD Pad": 3,
+        "SMD Pad to Track": 2
+      },
+      "cats": ["Clearance Error:5", "Connection Error:4"],
+      "connection_leaf_hits": 4,
+      "cats_connection_hits": 4,
+      "connection_category_drift": false,
+      "reader_id": "BOARD_READ_JS@v2",
+      "details_hash": "9fd8e3097f3c9951",
+      "details_count": 6,
+      "designator_set_hash": "7d59327e769a148b",
+      "designators_available": true,
+      "designators_count": 6,
+      "drc_dup_removed": 0,
+      "drc_count_mismatch": false,
+      "drc_leaf_hash": "464ad5cf42072316",
+      "drc_raw_leaf_count": 9,
+      "drc_leaf_count": 9,
+      "eda_counts_available": true,
+      "eda_count_total": 9,
+      "identity_incomplete": 4,
+      "coord_missing": 0,
+      "unresolved_identity": 4,
+      "unresolved_coord": 0,
+      "probes": {
+        "drc_dup_removed": 0,
+        "drc_count_mismatch": false,
+        "drc_leaf_hash": "464ad5cf42072316",
+        "probe_complete": true,
+        "unresolved_identity": 4,
+        "unresolved_coord": 0
+      },
+      "comparable": true,
+      "reasons": [],
+      "warnings": ["identity_incomplete: 4 个叶子身份字段缺失，各自独立未合并"]
+    },
+    "screenshot": "out/live/agent-drill-rc50-pcb.png",
+    "mcp": {
+      "toolCount": 51,
+      "calls": [
+        {
+          "name": "lceda_info",
+          "isError": false
+        },
+        {
+          "name": "api_search",
+          "isError": false
+        },
+        {
+          "name": "eda_doc_info",
+          "isError": false
+        },
+        {
+          "name": "eda_read_board",
+          "isError": false
+        }
+      ]
+    }
+  },
+  "ok": true
+}
