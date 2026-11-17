@@ -12,8 +12,16 @@
     "lceda",
     "mcp"
   ],
+  "homepage": "https://github.com/LeonhardtHUST/lceda-connect#readme",
+  "bugs": {
+    "url": "https://github.com/LeonhardtHUST/lceda-connect/issues"
+  },
   "license": "GPL-3.0-only",
   "author": "Leon",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeonhardtHUST/lceda-connect.git"
+  },
   "bin": {
     "lceda-bridge": "./dist/cli-bridge.mjs",
     "lceda-cdp": "./dist/cli-cdp.mjs",
@@ -28,6 +36,7 @@
     "THIRD_PARTY_NOTICES.md"
   ],
   "type": "module",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": "./dist/index.mjs",
     "./cli": "./dist/cli.mjs",
@@ -37,12 +46,16 @@
     "./cli-mcp": "./dist/cli-mcp.mjs",
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vp pack",
     "dev": "vp pack --watch",
     "test": "vp test",
     "check": "vp check",
-    "prepublishOnly": "vp run build",
+    "ci": "vp check && vp test && vp pack",
+    "prepublishOnly": "vp check && vp test && vp run build",
     "prepare": "vp config --no-agent",
     "hooks:install": "vp hooks enable",
     "hooks:uninstall": "vp hooks disable",

@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  # 开发工具链 vite-plus 要求 Node ^22.18 / ^24.11，所以 check / test / pack 只在 22、24 上跑。
+  # 发布产物声明的 engines 下限 20.11 由下面的 runtime-node20 单独验证。
+  ci:
+    name: ci (${{ matrix.os }} / node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+
+      # 不在 package.json 里写 packageManager：pnpm 12 会因此往 lockfile 追加
+      # packageManagerDependencies，导致冻结安装失败。版本在这里固定。
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.21.0
+          standalone: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查与 lint（vp check）
+        run: pnpm exec vp check
+
+      - name: 测试（vp test）
+        run: pnpm exec vp test
+
+      - name: 构建（vp pack）
+        run: pnpm exec vp pack
+
+      # npm pack --dry-run 给出 JSON，里面带解包体积和文件数；超过门槛就失败。
+      - name: 校验包体积与文件数
+        shell: bash
+        run: |
+          node -e '
+          const { execSync } = require("node:child_process");
+          const out = execSync("npm pack --dry-run --json", { encoding: "utf8" });
+          const info = JSON.parse(out)[0];
+          if (!info) throw new Error("npm pack --dry-run 没有返回包信息");
+          const files = info.entryCount ?? info.files.length;
+          const mb = info.unpackedSize / 1024 / 1024;
+          console.log(`解包体积 ${mb.toFixed(2)} MB，文件数 ${files}`);
+          if (mb >= 15) throw new Error("解包体积超过 15 MB");
+          if (files >= 2500) throw new Error("文件数超过 2500");
+          '
+
+  # 用 Node 24 构建，再切到 engines 下限 20.11 运行产物，确认没有用到更新的运行时 API。
+  runtime-node20:
+    name: runtime (${{ matrix.os }} / node 20.11)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.21.0
+          standalone: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: 安装依赖并构建
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vp pack
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.11"
+
+      - name: 在 Node 20.11 上运行 CLI 与 MCP 工具清单
+        shell: bash
+        run: |
+          node --version
+          node dist/cli.mjs --version
+          # mcp tools 每行一个工具：名称 + 描述。
+          n=$(node dist/cli.mjs mcp tools | grep -cE '^[a-z][a-z0-9_]+ ')
+          echo "MCP 工具 $n 个"
+          test "$n" -ge 10
+
+  # 单独跑一遍装好 ngspice 的测试，覆盖未装 ngspice 时被跳过的分支。
+  ngspice:
+    name: ngspice (ubuntu-latest / node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.21.0
+          standalone: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 安装 ngspice
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ngspice
+          command -v ngspice
+
+      - name: 测试（含真实 ngspice 分支）
+        run: pnpm exec vp test
