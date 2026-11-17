@@ -14,8 +14,11 @@ lceda-connect 合并了下列 9 个仓库的代码、数据与文档。下表记
 | easyeda-format-skill               | `4fcab1747d47` | MIT（EasyEDA）                                                             | Schema 与图元文档作为 assets；校验器用 TS 重写，不再依赖 ajv              | `src/format/`、`assets/format/`                                         |
 | easyeda-client-cli                 | `5452c638fca8` | 仓库内无 LICENSE 文件；README 声称 Apache-2.0                              | 文档原样并入，作为参考                                                    | `docs/vendor/easyeda-client-cli/`                                       |
 
-## 需要所有者确认的事项
+## 项目许可与第三方边界
 
-- 本仓库根目录的 `LICENSE` 是 GPL-3.0 全文，而 `package.json` 与 README 写的是 MIT。合并时没有改动许可证，请确认最终采用哪一个。
-- easyeda-api-skill 与 easyeda-client-cli 的原文来自嘉立创EDA 官方，仓库内没有 LICENSE 文件。发布 npm 包前建议到上游确认许可证并补全归属。
+本项目采用 GPL-3.0-only，许可证全文见 `LICENSE`。上表中的第三方内容保留其原始许可证、版权和归属；本项目的许可选择不改变上游的授权条件。
+
+## 发布前待核实事项
+
+- easyeda-api-skill 与 easyeda-client-cli 的原文来自嘉立创EDA 官方，仓库内没有 LICENSE 文件。发布 npm 包前需核实对应版本的授权并补全许可文本；不能以本项目采用 GPL 代替上游授权。
 - ngspice-sim sidecar 中的 openEMS 相关脚本只生成脚本，不内置 openEMS（GPL-3.0），使用者需自行安装。

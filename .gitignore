@@ -137,9 +137,3 @@ dist
 
 # Vite+ 生成的钩子转发器
 /.vite-hooks/_/
-
-# Worker 留下的本地临时文件（删除需审批，先排除；可手动删除）
-/tests/fixtures/epro2/.tmp-compare/
-/tests/fixtures/epro2/tsconfig.check.json
-/tests/fixtures/epro2/.gitignore
-/src/cdp/.gen-modal-probe.mjs

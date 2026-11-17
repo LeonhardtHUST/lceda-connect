@@ -12,7 +12,7 @@
     "lceda",
     "mcp"
   ],
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "author": "Leon",
   "bin": {
     "lceda-bridge": "./dist/cli-bridge.mjs",
