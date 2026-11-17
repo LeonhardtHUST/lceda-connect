@@ -48,36 +48,98 @@ const requiresConfirm = [
   'A["pcb_Document"]',
   "globalThis.eda",
   'location="https://example.invalid"',
+  "A.x.getY().then(x=>x.delete())",
+  "A.x.getY().setThing()",
+  String.raw`\u0041.pcb_Document.autoRouting()`,
+  "with(A.x.getY()){autoRouting()}",
+  "A.x.getY(),sideEffect()",
+  "sideEffect`x`",
+  "Object.assign(document.body,{innerHTML:1})",
+  "tag`x`",
+  "A.x.getY(()=>1)",
+  "A.x.getY({innerHTML:1})",
+  "A.x.getY(innerHTML)",
+  "A.x.getY(); sideEffect()",
+  "A.x.getY()\nsideEffect()",
+  "A.x.getY();;",
+  "document.body",
+  "document.title + 1",
+  "document.title.x",
+  'A.x.getY("/*") ; sideEffect()',
 ];
 
 test("classifyEval 与 cdp_eval 对 API 绕过一律要求确认", async () => {
   for (const expression of requiresConfirm) {
     expect(classifyEval(expression).readonly, expression).toBe(false);
+    expect(classifyEval(expression).reasons.length, expression).toBeGreaterThan(0);
     const result = await invokeTool(cdpEvalTool, { expression }, { cfg: loadConfig({}), env: {} });
     expect(result.isError, expression).toBe(true);
     expect(result.content[0]?.text).toContain("CONFIRM_REQUIRED");
     expect(result.content[0]?.text).toContain("reasons");
   }
-  expect(classifyEval("document.title").readonly).toBe(true);
-  expect(classifyEval("A.dmt_Project.getCurrentProjectInfo()").readonly).toBe(true);
 });
 
-test("classifyEval 剥离字符串/注释，检查运算符与模板插值", () => {
+test("classifyEval 只放行严格白名单：document 只读属性、单条查询、纯 JSON", () => {
+  const allowed = [
+    "document.title",
+    "document.URL",
+    "document.documentURI",
+    "document.readyState",
+    "A.dmt_Project.getCurrentProjectInfo()",
+    'A.x.getY("quoted value")',
+    "eda.api.getCurrentProjectInfo()",
+    "return await A.pcb_Net.getAllNets();",
+    "await A.pcb_Net.getAllNets()",
+    "123",
+    "true",
+    "null",
+    '{"a":1}',
+    '[1,"x"]',
+    '"plain string"',
+    'A.x.getY(") ; sideEffect()")',
+    "/* comment */ A.x.getY(/* args */) // tail",
+  ];
+  for (const expression of allowed) {
+    expect(classifyEval(expression).readonly, expression).toBe(true);
+  }
+});
+
+test("classifyEval 剥离注释但不吞字符串，多语句与比较表达式默认拒绝", () => {
   const expression = `
     // fetch('/bad')
-    "location = 'x'";
     /* document.cookie */
     return await A.pcb_Net.getAllNets();
   `;
   expect(classifyEval(expression).readonly).toBe(true);
   expect(stripJavaScriptLiterals(expression)).not.toContain("fetch");
+
+  // 字符串语句 + return await 是多语句，旧实现的宽容口径不再放行。
+  const multiStatement = `
+    // fetch('/bad')
+    "location = 'x'";
+    /* document.cookie */
+    return await A.pcb_Net.getAllNets();
+  `;
+  expect(classifyEval(multiStatement).readonly).toBe(false);
+
   for (const code of ["a=1", "a+=1", "a++", "a--", "a<<=1", "a>>=1", "a&&=1", "a??=1"]) {
     expect(classifyEval(code).readonly, code).toBe(false);
   }
   for (const code of ["a==b", "a===b", "a!=b", "a!==b", "a<=b", "a>=b", "()=>1"]) {
-    expect(classifyEval(code).readonly, code).toBe(true);
+    expect(classifyEval(code).readonly, code).toBe(false);
   }
   expect(classifyEval('`${fetch("/x")}`').readonly).toBe(false);
+});
+
+test("JS Unicode 行终止符不能把后续代码藏进行注释", async () => {
+  for (const terminator of ["\u2028", "\u2029"]) {
+    const expression = `document.title // comment${terminator};globalThis.hit=true`;
+    expect(classifyEval(expression).readonly).toBe(false);
+    expect(stripJavaScriptLiterals(expression)).toContain("globalThis.hit=true");
+    const result = await invokeTool(cdpEvalTool, { expression }, { cfg: loadConfig({}), env: {} });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain("CONFIRM_REQUIRED");
+  }
 });
 
 test("redact 大小写不敏感、先解码并覆盖扩展敏感名单", () => {

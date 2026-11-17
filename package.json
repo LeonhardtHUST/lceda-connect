@@ -38,7 +38,10 @@
   "type": "module",
   "types": "./dist/index.d.mts",
   "exports": {
-    ".": "./dist/index.mjs",
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
     "./cli": "./dist/cli.mjs",
     "./cli-bridge": "./dist/cli-bridge.mjs",
     "./cli-bridge-server": "./dist/cli-bridge-server.mjs",
@@ -79,5 +82,6 @@
   },
   "engines": {
     "node": ">=20.11"
-  }
+  },
+  "packageManager": "pnpm@12.21.0"
 }

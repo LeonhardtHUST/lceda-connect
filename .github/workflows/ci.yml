@@ -9,9 +9,21 @@ on:
 permissions:
   contents: read
 
+# 工具链约定：
+#
+# pnpm：版本只在 package.json 的 packageManager 字段里声明（pnpm@12.21.0）。
+#   pnpm/action-setup 不传 version，直接按 packageManager 装，两处版本对不上 CI 会失败。
+#   pnpm 12 会把解析到的包管理器版本写进 pnpm-lock.yaml 的第一个 YAML 文档
+#   （packageManagerDependencies），所以 package.json 与 pnpm-lock.yaml 必须一起改。
+#   只改一边，pnpm install --frozen-lockfile 会拒绝安装。
+#
+# Node：开发工具链 vite-plus@1.6 的 engines 是 ^22.18.0 || ^24.11.0 || >=26.0.0，
+#   Node 20 上 vp 无法运行，所以 vp check / vp test / vp pack 只在 Node 22、24 上跑。
+#   产物声明的 engines 下限是 Node 20.11，这一条由 runtime-node20 验证：
+#   用 Node 24 构建，再切到 Node 20.11 运行同一份 dist 产物（CLI、MCP、库入口）。
+#   工作流里 vp 只出现在 Node 22/24 的步骤中，Node 20.11 的 job 不跑 vp。
+
 jobs:
-  # 开发工具链 vite-plus 要求 Node ^22.18 / ^24.11，所以 check / test / pack 只在 22、24 上跑。
-  # 发布产物声明的 engines 下限 20.11 由下面的 runtime-node20 单独验证。
   ci:
     name: ci (${{ matrix.os }} / node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
@@ -23,12 +35,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 不在 package.json 里写 packageManager：pnpm 12 会因此往 lockfile 追加
-      # packageManagerDependencies，导致冻结安装失败。版本在这里固定。
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 12.21.0
-          standalone: true
+      - name: 安装 pnpm（版本取自 package.json 的 packageManager）
+        uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v4
         with:
@@ -63,7 +71,9 @@ jobs:
           if (files >= 2500) throw new Error("文件数超过 2500");
           '
 
-  # 用 Node 24 构建，再切到 engines 下限 20.11 运行产物，确认没有用到更新的运行时 API。
+  # Node 20.11 是产物声明的运行时下限，但跑不了 vite-plus（engines 要求 ^22.18 / ^24.11 / >=26）。
+  # 这里用 Node 24 构建，然后把运行时切到 20.11，对同一份 dist 做等价的运行时冒烟：
+  # CLI 版本、子命令帮助、MCP 工具清单、MCP stdio initialize 握手、库入口 API。
   runtime-node20:
     name: runtime (${{ matrix.os }} / node 20.11)
     runs-on: ${{ matrix.os }}
@@ -74,10 +84,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 12.21.0
-          standalone: true
+      - name: 安装 pnpm（版本取自 package.json 的 packageManager）
+        uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v4
         with:
@@ -93,15 +101,46 @@ jobs:
         with:
           node-version: "20.11"
 
-      - name: 在 Node 20.11 上运行 CLI 与 MCP 工具清单
+      - name: 确认运行时已切到 20.11
         shell: bash
         run: |
           node --version
+          node -e '
+          const [major, minor] = process.versions.node.split(".").map(Number);
+          if (major !== 20 || minor !== 11) {
+            throw new Error(`期望 Node 20.11，实际 ${process.versions.node}`);
+          }
+          '
+
+      - name: 在 Node 20.11 上运行 CLI 与 MCP 工具清单
+        shell: bash
+        run: |
+          set -euo pipefail
           node dist/cli.mjs --version
+          node dist/cli-cdp.mjs --help > /dev/null
+          node dist/cli-bridge.mjs --help > /dev/null
           # mcp tools 每行一个工具：名称 + 描述。
-          n=$(node dist/cli.mjs mcp tools | grep -cE '^[a-z][a-z0-9_]+ ')
+          n=$(node dist/cli.mjs mcp tools | grep -cE '^[a-z][a-z0-9_]+ ' || true)
           echo "MCP 工具 $n 个"
           test "$n" -ge 10
+
+      - name: 在 Node 20.11 上验证库入口与 MCP 握手
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module -e '
+          import { allTools, loadConfig, packageVersion } from "./dist/index.mjs";
+          const tools = allTools();
+          if (tools.length < 10) throw new Error(`工具数 ${tools.length} < 10`);
+          if (packageVersion() !== "0.1.0") throw new Error(`版本 ${packageVersion()}`);
+          const config = loadConfig({});
+          if (config.cdp.port !== 9222) throw new Error(`默认 CDP 端口 ${config.cdp.port}`);
+          console.log(`库入口可用：${tools.length} 个工具，版本 ${packageVersion()}`);
+          '
+          # MCP stdio：发一条 initialize，确认服务端返回 serverInfo。
+          response=$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' | node dist/cli-mcp.mjs 2>/dev/null)
+          echo "$response"
+          printf '%s' "$response" | grep -q '"serverInfo"'
 
   # 单独跑一遍装好 ngspice 的测试，覆盖未装 ngspice 时被跳过的分支。
   ngspice:
@@ -110,10 +149,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 12.21.0
-          standalone: true
+      - name: 安装 pnpm（版本取自 package.json 的 packageManager）
+        uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v4
         with:

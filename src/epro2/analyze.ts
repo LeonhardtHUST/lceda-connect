@@ -4,9 +4,9 @@
  * 与 Python 版 analyze.py 对齐：collect / check_consistency / find_floating /
  * render_report / run_single / run_diff 各自独立，CLI 与 MCP 只调用这一层。
  */
-import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+import { ensureSafeOutputDir, safeWriteJson, safeWriteText } from "../core/pathPolicy.ts";
 import type {
   AmbiguousMap,
   Artifacts,
@@ -37,13 +37,11 @@ export function slug(text: unknown, fallback = "page"): string {
 }
 
 export function writeJson(filePath: string, value: unknown): string {
-  writeFileSync(filePath, JSON.stringify(value, null, 1), "utf8");
-  return filePath;
+  return safeWriteJson(filePath, value);
 }
 
 export function writeText(filePath: string, text: string): string {
-  writeFileSync(filePath, text, "utf8");
-  return filePath;
+  return safeWriteText(filePath, text);
 }
 
 export interface Collected {
@@ -309,10 +307,10 @@ export function runSingle(
 ): AnalyzeRun {
   const collected = collect(projectPath, pageKey);
   const { artifacts, docs, proj, stats } = collected;
-  mkdirSync(outDir, { recursive: true });
+  const safeOutDir = ensureSafeOutputDir(outDir);
   const files: string[] = [];
 
-  files.push(writeJson(path.join(outDir, "meta.json"), artifacts.meta));
+  files.push(writeJson(path.join(safeOutDir, "meta.json"), artifacts.meta));
 
   const usedNames = new Set<string>();
   for (const ir of artifacts.pages_ir) {
@@ -324,22 +322,22 @@ export function runSingle(
       suffix += 1;
     }
     usedNames.add(name);
-    files.push(writeJson(path.join(outDir, `schematic_${name}.json`), ir));
+    files.push(writeJson(path.join(safeOutDir, `schematic_${name}.json`), ir));
   }
-  files.push(writeJson(path.join(outDir, "nets.json"), netsDump(artifacts.pages_ir)));
+  files.push(writeJson(path.join(safeOutDir, "nets.json"), netsDump(artifacts.pages_ir)));
 
   files.push(
     writeText(
-      path.join(outDir, "pcb_netlist.csv"),
+      path.join(safeOutDir, "pcb_netlist.csv"),
       `\uFEFF${formatNetlistCsv(artifacts.pcb_rows)}`,
     ),
   );
-  files.push(writeJson(path.join(outDir, "pcb_geometry.json"), artifacts.geometry));
+  files.push(writeJson(path.join(safeOutDir, "pcb_geometry.json"), artifacts.geometry));
 
   const { mismatches, stats: consistency } = checkConsistency(artifacts);
   const { floating, truncated } = findFloating(artifacts.pages_ir);
   const report = renderReport(artifacts, mismatches, consistency, floating, truncated);
-  files.push(writeText(path.join(outDir, "report.md"), report));
+  files.push(writeText(path.join(safeOutDir, "report.md"), report));
 
   return {
     artifacts,
@@ -364,11 +362,14 @@ export interface DiffRun {
 /** 两版比较并写出 diff.json / diff.md。 */
 export function runDiff(oldPath: string, newPath: string, outDir: string): DiffRun {
   const result = compare(oldPath, newPath);
-  mkdirSync(outDir, { recursive: true });
+  const safeOutDir = ensureSafeOutputDir(outDir);
   const writtenSummary = summarize(result);
   const files = [
-    writeJson(path.join(outDir, "diff.json"), result),
-    writeText(path.join(outDir, "diff.md"), `# 版本差异\n\n\`\`\`\n${writtenSummary}\n\`\`\`\n`),
+    writeJson(path.join(safeOutDir, "diff.json"), result),
+    writeText(
+      path.join(safeOutDir, "diff.md"),
+      `# 版本差异\n\n\`\`\`\n${writtenSummary}\n\`\`\`\n`,
+    ),
   ];
   return { result, summary: writtenSummary, files };
 }

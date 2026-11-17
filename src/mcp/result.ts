@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -99,11 +100,12 @@ export function saveResult(
   uri: string;
 } {
   const dir = resultRoot(env);
-  mkdirSync(dir, { recursive: true });
+  // 归档保留完整原文；POSIX 限制为当前用户，Windows 权限由用户目录 ACL 决定。
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, "");
   const id = `${timestamp}-${randomBytes(6).toString("hex")}.json`;
   const filePath = path.join(dir, id);
-  writeFileSync(filePath, data, "utf8");
+  writeFileSync(filePath, data, { encoding: "utf8", mode: 0o600, flag: "wx" });
   retainRecentResults(dir);
   return { id, path: filePath, uri: `lceda://results/${id}` };
 }
@@ -124,6 +126,9 @@ export function readSavedResult(id: string, env: NodeJS.ProcessEnv = process.env
   const relative = path.relative(dir, filePath);
   if (!existsSync(filePath) || relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new ToolError("NOT_FOUND", `没有找到结果资源 ${id}`);
+  }
+  if (!lstatSync(filePath).isFile() || lstatSync(filePath).isSymbolicLink()) {
+    throw new ToolError("NOT_FOUND", "结果资源必须是普通文件，不能是符号链接。");
   }
   return readFileSync(filePath, "utf8");
 }

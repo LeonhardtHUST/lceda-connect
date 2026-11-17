@@ -106,6 +106,9 @@ test.skipIf(process.platform !== "win32")(
       await expect(
         runSimSidecar("sim_exec.py", ["unsafe&arg"], { python: batch }),
       ).rejects.toMatchObject({ code: "UNSAFE_ARGUMENT" });
+      await expect(
+        runSimSidecar("sim_exec.py", [], { python: 'C:\\safe.bat" & whoami & "x.bat' }),
+      ).rejects.toMatchObject({ code: "UNSAFE_ARGUMENT" });
       const result = await runSimSidecar("sim_exec.py", ["plain argument"], { python: batch });
       expect(result.ok).toBe(true);
       expect(result.stdout).toContain("plain-output");

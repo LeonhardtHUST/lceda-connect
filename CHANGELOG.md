@@ -18,10 +18,12 @@
 - `lceda-connect mcp --toolsets` 与 `LCEDA_TOOLSETS` 可按 `core` / `offline` / `live` 或具体领域裁剪工具，`core` 总是保留。
 - MCP 支持请求取消（报 `CANCELLED`）；`sim_run`、`eprj3_gates` 等长任务发送进度通知。
 - MCP 写路径策略：只允许客户端 roots、`LCEDA_ALLOWED_ROOTS` 和默认根（当前目录、系统临时目录、connect home），越界报 `PATH_NOT_ALLOWED`；`LCEDA_ALLOWED_ROOTS=*` 关闭限制，读路径不受限。
-- GitHub Actions：Windows / Linux × Node 22、24 跑 check、test、pack 和包体积门禁；Node 20.11 上运行构建产物；单独一个 job 跑真实 ngspice。
+- GitHub Actions：Windows / Linux × Node 22、24 跑 check、test、pack 和包体积门禁；Node 20.11 job 用 Node 24 构建后运行同一份 dist 产物（CLI、MCP 工具清单、MCP stdio 握手、库入口）；单独一个 job 跑真实 ngspice。Node 20.11 上不跑 vite-plus，因为 `vite-plus@1.6` 的 engines 是 `^22.18.0 || ^24.11.0 || >=26.0.0`。
 
 ### 变更
 
+- pnpm 版本改由 `package.json` 的 `packageManager`（`pnpm@12.21.0`）声明，`pnpm-lock.yaml` 同步写入包管理器解析结果；CI 不再单独传 pnpm 版本，直接从 `packageManager` 读取。
+- `exports["."]` 改为条件导出 `{ "types": "./dist/index.d.mts", "default": "./dist/index.mjs" }`。
 - skills 资源改为模板 `lceda://skills/{+path}`。
 - 超限的 MCP 结果不再截断，改为落盘加摘要（此前是截断并在 `_meta` 注明大小）。
 - `cdp_eval` 改为保守的只读判定：只有形如 `getX` / `isX` / `hasX` / `listX` / `findX` / `queryX` / `searchX` 的命名空间调用和普通 DOM 读取直接执行，其余都要 `confirm: true`；`allowSideEffects` 保留为弃用别名。
@@ -31,9 +33,12 @@
 ### 安全
 
 - bridge 只接受回环 Host（其他返回 421），去掉通配 CORS。
-- agent 端带 Origin 的请求默认返回 403；`/eda` 扩展端沿用原来的宽松 Origin 策略。
+- agent 端带 Origin 的请求默认返回 403；`/eda` 拒绝 null Origin，防止沙箱 iframe/data 页面冒充编辑器连接。旧连接关闭时不会删除已重连的新窗口映射。
 - 请求体 4 MiB、`code` 1 MiB、WebSocket 载荷 16 MiB、待决请求 64 个的上限，超出分别返回 413 / 503。
 - `bridge stop` 只结束经确认属于本工具的进程。
+
+- 构建关闭自动重写 exports，`vp pack` 保留项目声明的 types/default 条件导出。
+- 超限结果按完整原文归档，POSIX 新目录/文件以 0700/0600 创建；文档明确说明未自动脱敏，写路径策略不隔离不可信的脚本与仿真输入。
 
 ## [0.1.0] - 2026-11-17
 

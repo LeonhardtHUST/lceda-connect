@@ -72,10 +72,27 @@ async function waitFor<T>(probe: () => Promise<T | null> | T | null, timeoutMs =
   }
 }
 
+const UNDICI_BLOCKED_PORTS = new Set([
+  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 79, 87, 95, 101, 102, 103,
+  104, 109, 110, 111, 113, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514,
+  515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720,
+  1723, 2049, 3659, 4045, 5060, 5061, 6000, 6697, 10080,
+]);
+
+function isUndiciBlockedPort(port: number): boolean {
+  return UNDICI_BLOCKED_PORTS.has(port) || (port >= 6665 && port <= 6669);
+}
+
 async function startServer(
   options: Parameters<typeof startBridgeServer>[0] = {},
 ): Promise<BridgeServerHandle> {
-  return await startBridgeServer({ port: 0, logger: () => {}, ...options });
+  const autoPort = options.port === undefined || options.port === 0;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const server = await startBridgeServer({ port: 0, logger: () => {}, ...options });
+    if (!autoPort || !isUndiciBlockedPort(server.port)) return server;
+    await server.close();
+  }
+  throw new Error("Unable to allocate a port accepted by Undici");
 }
 
 async function connectEditor(port: number, windowId?: string): Promise<FakeEditor> {
@@ -405,6 +422,55 @@ test("编辑器断线时拒绝该窗口的 pending 请求，并重选激活窗�
   }
 });
 
+test("同 windowId 重连时旧连接关闭不删除新映射或 pending", async () => {
+  const server = await startServer({ requestTimeoutMs: 1000 });
+  const oldEditor = await connectEditor(server.port, "win-reconnect");
+  let newEditor: FakeEditor | null = null;
+  try {
+    oldEditor.onExecute = () => null;
+    const pending = postJson<BridgeExecuteResponse>(`${baseUrl(server)}/execute`, {
+      code: "return old;",
+      windowId: "win-reconnect",
+    });
+    const oldExecute = await oldEditor.waitMessage((message) => message.type === "execute");
+
+    newEditor = await connectEditor(server.port, "win-reconnect");
+    const replacement = newEditor;
+    replacement.onExecute = (message) => ({
+      type: "result",
+      id: message.id,
+      result: { source: "new", code: message.code },
+      timestamp: Date.now(),
+    });
+    await waitFor(async () => {
+      const state = await health(server.port);
+      return state.edaWindowCount === 1 ? state : null;
+    });
+
+    oldEditor.close();
+    replacement.send({
+      type: "result",
+      id: oldExecute.id,
+      result: "old-pending-completed",
+      timestamp: Date.now(),
+    });
+    const pendingResult = await pending;
+    expect(pendingResult.status).toBe(200);
+    expect(pendingResult.body.result).toBe("old-pending-completed");
+
+    const executed = await postJson<BridgeExecuteResponse>(`${baseUrl(server)}/execute`, {
+      code: "return new;",
+      windowId: "win-reconnect",
+    });
+    expect(executed.status).toBe(200);
+    expect(executed.body.result).toEqual({ source: "new", code: "return new;" });
+  } finally {
+    oldEditor.close();
+    newEditor?.close();
+    await server.close();
+  }
+});
+
 test("已有实例时 startBridgeServer 直接复用，不重复监听", async () => {
   const first = await startServer();
   try {
@@ -629,7 +695,8 @@ test("/eda Origin 策略允许扩展来源并拒绝普通网页", async () => {
       ws.once("error", reject);
     });
   try {
-    for (const origin of ["null", "file://", "app://easyeda", "https://pro.lceda.cn"]) {
+    await expect(open("null")).rejects.toThrow();
+    for (const origin of ["file://", "app://easyeda", "https://pro.lceda.cn"]) {
       const ws = await open(origin);
       ws.terminate();
     }

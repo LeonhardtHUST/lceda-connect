@@ -118,7 +118,9 @@ function agentOriginAllowed(origin: string | undefined, allowlist: Set<string>):
 }
 
 function edaOriginAllowed(origin: string | undefined, allowlist: Set<string>): boolean {
-  if (origin === undefined || origin === "null" || allowlist.has(origin)) return true;
+  if (origin === undefined) return true;
+  if (origin === "null") return false;
+  if (allowlist.has(origin)) return true;
   try {
     const parsed = new URL(origin);
     const protocol = parsed.protocol.toLowerCase();
@@ -641,7 +643,7 @@ export async function startBridgeServer(
         logger(
           `[WS] EDA window disconnected: ${registeredWindowId ?? "?"} (${code} ${reason.toString()})`,
         );
-        if (registeredWindowId) dropEdaWindow(registeredWindowId);
+        if (registeredWindowId) dropEdaWindow(registeredWindowId, ws);
       });
 
       ws.on("error", (error: Error) => {

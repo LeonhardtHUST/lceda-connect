@@ -69,7 +69,7 @@
 ## 执行结果（2026-11-17）
 
 - 9 个源仓库全部按上表处置完毕；MCP 共 51 个工具，CLI 新增 api、format、epro2、eprj3、sim、eda 六个命令组，cdp/bridge 原有动作与选项不变。合并之后的安全加固与 MCP 变更见 [CHANGELOG](../CHANGELOG.md)。
-- `vp check` 全过；`vp test` 306 通过、1 跳过（未装 ngspice 时的分支）；`vp pack` 成功且不改动 package.json。
+- 合并时基线：`vp check` 全过；`vp test` 306 通过、1 跳过（未装 ngspice 时的分支）；`vp pack` 成功且不改动 package.json。以上为当时记录，后续安全加固的验证结果单独记录在验收报告中。
 - 与方案的出入：
   - ngspice-sim 的 override、行为级模型、IBIS 三层暂未移植，走 sidecar；网表生成遇到无模型 IC 时排除，strict 模式报 `UNMAPPED_IC`。
   - eprj3 的 `eval.js`、`make-board.js` 依赖源仓库 `test/capture`，没有随 sidecar 收入，已从白名单排除。

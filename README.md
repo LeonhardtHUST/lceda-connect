@@ -41,12 +41,13 @@
 bridge 能在编辑器里执行任意 `eda.*` 代码，所以默认只信任本机上拿到 token 的调用方：
 
 - 只接受回环 Host（`127.0.0.1`、`localhost`、`[::1]`），其他 Host 返回 421。
-- agent 端（`/execute`、`/eda-windows`、`/eda-windows/select`，以及 `/eda` 以外的 WebSocket）带 `Origin` 的请求默认返回 403，浏览器页面因此不能直接调用。确需放行的来源写进 `LCEDA_BRIDGE_ALLOWED_ORIGINS`（逗号分隔）。`/eda` 是扩展端，沿用原来较宽松的 Origin 策略，已装的扩展不用改。
+- agent 端（`/execute`、`/eda-windows`、`/eda-windows/select`，以及 `/eda` 以外的 WebSocket）带 `Origin` 的请求默认返回 403，浏览器页面因此不能直接调用。确需放行的来源写进 `LCEDA_BRIDGE_ALLOWED_ORIGINS`（逗号分隔）。`/eda` 是扩展端，允许无 Origin、本机地址、官方域名及桌面应用自定义协议，但拒绝 `Origin: null`（沙箱 iframe 和 data 页面可能使用它）。依赖 null Origin 的旧扩展需要调整连接方式，不能通过来源白名单解除此限制。
 - agent 端还要带请求头 `X-Lceda-Bridge-Token`（WebSocket 也可用 `?token=`），缺失或不对返回 401。服务启动时生成 token，写到 `LCEDA_BRIDGE_RUNTIME`（默认 `%LOCALAPPDATA%\lceda-bridge`）下的 `token-<端口>.txt`；也可以用 `LCEDA_BRIDGE_TOKEN` 指定。`/health` 不需要 token。
 - 本工具的 CLI 和 MCP 客户端会自动读取 token 文件；token 无效时报 `BRIDGE_UNAUTHORIZED`。
 - 旧的外部脚本（比如直接 POST `/execute` 的 Python）要么带上 token，要么在启动 bridge 的环境里设 `LCEDA_BRIDGE_AUTH=off` 关闭校验。关闭后仍保留 Host 与 Origin 检查。
 - 上限：请求体 4 MiB，`code` 1 MiB（超出返回 413），WebSocket 单帧 16 MiB，待决请求 64 个（满了返回 503）。
-- MCP 的写路径限制见上一节。`LCEDA_ALLOWED_ROOTS=*` 可关闭限制。
+- MCP 的写路径限制用于防误写，不是操作系统沙箱。`LCEDA_ALLOWED_ROOTS=*` 可关闭限制。任意代码执行、ngspice deck、生成器与 sidecar 仍以当前用户权限运行，只应执行可信内容；它们自己的文件访问不受 `outDir` 校验隔离。`confirm: true` 由调用方提供，也不代替客户端的人工审批。
+- 超限结果归档保存完整原文，不自动脱敏，可能含工程数据或凭据。POSIX 新目录/文件以 0700/0600 创建，Windows 继承用户目录 ACL；不要把运行态目录放在共享目录，敏感结果用完后自行清理。
 - 子进程超时或被取消时会清理整棵进程树，每路输出上限 8 MiB。Python 自动探测会跳过 `.bat` / `.cmd` 壳；显式指定批处理文件时，含 shell 元字符的参数会被拒绝。
 
 ## 安装

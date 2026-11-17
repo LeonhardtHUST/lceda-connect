@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -118,6 +118,10 @@ test("结构化输出与超限结果资源", async () => {
   };
   expect(payload.resultUri).toMatch(/^lceda:\/\/results\//);
   expect(readFileSync(payload.path, "utf8")).toContain('"value"');
+  if (process.platform !== "win32") {
+    expect(statSync(payload.path).mode & 0o777).toBe(0o600);
+    expect(statSync(path.dirname(payload.path)).mode & 0o777).toBe(0o700);
+  }
 
   const outputTooLarge = okResult({ value: "x".repeat(100) }, 10, {
     env: { LCEDA_CONNECT_HOME: home },

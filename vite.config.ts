@@ -18,7 +18,8 @@ export default defineConfig({
     platform: "node",
     target: "node20",
     dts: { generator: "tsgo" },
-    exports: true,
+    // package.json 的条件导出由项目维护，构建不要覆盖 types/default。
+    exports: false,
   },
   lint: {
     ignorePatterns: VENDORED,

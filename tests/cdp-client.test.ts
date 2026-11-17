@@ -791,7 +791,8 @@ test("hasSideEffects 命中黑名单模式，只读表达式放行", () => {
     expect(hasSideEffects(expression)).toBe(true);
   }
   expect(hasSideEffects("document.title")).toBe(false);
-  expect(hasSideEffects("a.value === b")).toBe(false);
+  // 严格白名单下比较表达式也无法证明只读，需要用户确认。
+  expect(hasSideEffects("a.value === b")).toBe(true);
   expect(hasSideEffects("")).toBe(false);
   expect(SIDE_EFFECT_PATTERNS.length).toBeGreaterThanOrEqual(14);
 });

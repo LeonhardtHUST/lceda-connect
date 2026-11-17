@@ -10,6 +10,7 @@ import { formatTools } from "../src/format/mcpTools.ts";
 import { metricsTool } from "../src/sim/mcpTools.ts";
 import { errorResult } from "../src/mcp/result.ts";
 import { ToolError } from "../src/mcp/types.ts";
+import { writeProject } from "./fixtures/epro2/makeFixture.ts";
 
 const BLINK = path.join(import.meta.dirname, "fixtures", "eprj3", "blink");
 
@@ -40,6 +41,41 @@ test("offline MCP write paths reject traversal", async () => {
     ),
   ).rejects.toMatchObject({ code: "PATH_NOT_ALLOWED" });
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("epro2_report 拒绝 outDir/meta.json symlink，外部文件不变", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "offline-mcp-link-"));
+  try {
+    const project = writeProject(path.join(dir, "proj.epro2"));
+    const outDir = path.join(dir, "out");
+    fs.mkdirSync(outDir);
+    const outside = path.join(dir, "outside.json");
+    fs.writeFileSync(outside, "KEEP", "utf8");
+    try {
+      fs.symlinkSync(
+        outside,
+        path.join(outDir, "meta.json"),
+        process.platform === "win32" ? "file" : undefined,
+      );
+    } catch {
+      t.skip("当前环境无法创建符号链接（Windows 需要开发者模式或管理员权限）");
+      return;
+    }
+    const error = await reportTool
+      .run(
+        { file: project, outDir },
+        { cfg, env, resolveWritePath: async (value: string) => value },
+      )
+      .then(
+        () => undefined,
+        (reason: unknown) => reason,
+      );
+    expect(error).toBeInstanceOf(ToolError);
+    expect((error as ToolError).code).toBe("PATH_NOT_ALLOWED");
+    expect(fs.readFileSync(outside, "utf8")).toBe("KEEP");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("offline MCP annotations and format descriptions", () => {

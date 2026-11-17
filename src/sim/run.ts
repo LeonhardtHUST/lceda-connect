@@ -7,10 +7,17 @@
  * simulation_manifest.json）都落在工作目录里。
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import type { RunResult } from "../core/exec.ts";
+import {
+  assertSafeWorkDirEntries,
+  ensureSafeOutputDir,
+  safeWriteJson,
+  safeWriteText,
+} from "../core/pathPolicy.ts";
+import { ToolError } from "../mcp/types.ts";
 import { buildDeck, hasControlBlock } from "./deck.ts";
 import {
   NGSPICE_RUN_TIMEOUT_MS,
@@ -20,7 +27,7 @@ import {
   probeNgspice,
   runNgspiceBatch,
 } from "./ngspice.ts";
-import { buildManifest, fileHash, writeManifest } from "./manifest.ts";
+import { buildManifest, fileHash } from "./manifest.ts";
 import { computeMetrics } from "./metrics.ts";
 import { parseRawFile, plotsToCsv } from "./raw.ts";
 import type {
@@ -89,14 +96,14 @@ export async function runSimulation(options: RunSimulationOptions): Promise<RunS
   const progress = options.onProgress;
   await progress?.(0, 4, "写 deck");
   const env = options.env ?? process.env;
-  const workDir = path.resolve(options.workDir);
-  mkdirSync(workDir, { recursive: true });
+  const workDir = ensureSafeOutputDir(path.resolve(options.workDir));
+  assertSafeWorkDirEntries(workDir);
 
   const deckText = hasControlBlock(options.netlist)
     ? options.netlist
     : buildDeck(options.netlist, options.mode, options.args ?? null);
   const deckPath = path.join(workDir, "deck.cir");
-  writeFileSync(deckPath, deckText, "utf8");
+  safeWriteText(deckPath, deckText);
 
   let bin = options.ngspiceBin ?? null;
   if (!bin) {
@@ -122,8 +129,8 @@ export async function runSimulation(options: RunSimulationOptions): Promise<RunS
     signal: options.signal,
   });
   await progress?.(2, 4, "运行 ngspice");
-  writeFileSync(path.join(workDir, "stdout.txt"), runResult.stdout, "utf8");
-  writeFileSync(path.join(workDir, "stderr.txt"), runResult.stderr, "utf8");
+  safeWriteText(path.join(workDir, "stdout.txt"), runResult.stdout);
+  safeWriteText(path.join(workDir, "stderr.txt"), runResult.stderr);
 
   const raws: SimRawFile[] = [];
   await progress?.(3, 4, "解析 raw");
@@ -148,6 +155,8 @@ export async function runSimulation(options: RunSimulationOptions): Promise<RunS
         })),
       });
     } catch (error) {
+      // 写 CSV 的安全拒绝不能被当成"解析失败"吞掉。
+      if (error instanceof ToolError) throw error;
       const message = error instanceof Error ? error.message : String(error);
       rawErrors.push(`${name}: ${message}`);
       raws.push({ name, path: filePath, csv: null, plots: [], error: message });
@@ -160,7 +169,7 @@ export async function runSimulation(options: RunSimulationOptions): Promise<RunS
   const metricsPath =
     Object.keys(metricResult.metrics).length > 0 ? path.join(workDir, "metrics.json") : null;
   if (metricsPath) {
-    writeFileSync(metricsPath, JSON.stringify(metricResult.metrics, null, 1), "utf8");
+    safeWriteJson(metricsPath, metricResult.metrics);
   }
 
   const record: SimRunRecord = {
@@ -190,7 +199,10 @@ export async function runSimulation(options: RunSimulationOptions): Promise<RunS
   manifest["ngspice_bin"] = bin;
   manifest["timedOut"] = runResult.timedOut;
   if (rawErrors.length > 0) manifest["raw_errors"] = rawErrors;
-  const manifestPath = writeManifest(manifest, path.join(workDir, "simulation_manifest.json"));
+  const manifestPath = safeWriteText(
+    path.join(workDir, "simulation_manifest.json"),
+    `${JSON.stringify(manifest, null, 1)}\n`,
+  );
 
   const tail = `${runResult.stdout}\n${runResult.stderr}`
     .split(/\r?\n/)

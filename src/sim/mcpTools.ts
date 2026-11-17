@@ -7,11 +7,12 @@
  * 描述里写入了源仓库踩过的坑（`$` 是 ngspice 行内注释、子电路实例必须 X 开头、
  * tran 步长与最快边沿的关系、AC raw 的 X 轴也是复数对），省得调用方再撞一遍。
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { z } from "zod";
 
+import { ensureSafeOutputDir, safeWriteJson, safeWriteText } from "../core/pathPolicy.ts";
 import { ProjectError } from "../epro2/container.ts";
 import { ToolError, defineTool, requireConfirm, type ToolDef } from "../mcp/types.ts";
 import { buildPinNetTable, generateNetlist } from "./netlist.ts";
@@ -163,19 +164,19 @@ export const netlistTool = defineTool({
         simIr = loadSimIr(ir as string);
         pageLabel = (simIr.page.name as string | undefined) ?? null;
       }
-      mkdirSync(deckDir, { recursive: true });
+      const safeDeckDir = ensureSafeOutputDir(deckDir);
       const { text, report } = generateNetlist(simIr, buildPinNetTable(simIr), {
         config,
         models: models ?? null,
         powerPolicy: powerPolicy ?? null,
         strict: strict ?? undefined,
         allowPartialModel: allowPartialModel ?? undefined,
-        deckDir,
+        deckDir: safeDeckDir,
       });
-      const deckPath = path.join(deckDir, "schematic.cir");
-      writeFileSync(deckPath, text, "utf8");
-      const reportPath = path.join(deckDir, "netlist_report.json");
-      writeFileSync(reportPath, JSON.stringify(report, null, 1), "utf8");
+      const deckPath = path.join(safeDeckDir, "schematic.cir");
+      safeWriteText(deckPath, text);
+      const reportPath = path.join(safeDeckDir, "netlist_report.json");
+      safeWriteJson(reportPath, report);
       return {
         project: simIr.project,
         page: pageLabel,

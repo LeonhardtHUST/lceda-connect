@@ -7,8 +7,9 @@
  *   - ASCII 的 Values 块每个数据点占多行：首行 "点序号 第一个数值"，续行各一个数值；
  *   - complex 类型（AC 分析）成对存储，"re,im" 用逗号分隔；**X 轴（frequency）也是复数对**。
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
+import { safeWriteFile } from "../core/pathPolicy.ts";
 import type { RawPlot, RawValue } from "./types.ts";
 import { fmt } from "./parasitics.ts";
 
@@ -240,6 +241,5 @@ export function plotsToCsv(plots: readonly RawPlot[], file: string): string {
       );
     }
   }
-  writeFileSync(file, lines.join("\n") + "\n", "utf8");
-  return file;
+  return safeWriteFile(file, lines.join("\n") + "\n");
 }

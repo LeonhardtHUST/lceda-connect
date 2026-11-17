@@ -20,6 +20,15 @@ import { asText } from "./types.ts";
 
 export const SIDECAR_TIMEOUT_MS = 600_000;
 const PYTHON_PROBE_TIMEOUT_MS = 15_000;
+const BATCH_UNSAFE_CHARS = /["&|<>^%!\r\n]/;
+
+function isSafeBatchArg(value: string): boolean {
+  return value.length > 0 && !BATCH_UNSAFE_CHARS.test(value);
+}
+
+function quoteBatchArg(value: string): string {
+  return `"${value}"`;
+}
 
 export interface PythonCandidate {
   command: string;
@@ -189,14 +198,12 @@ export async function runSimSidecar(
   }
   const isBatch = process.platform === "win32" && /\.(?:bat|cmd)$/i.test(command);
   const allArgs = [...prefix, scriptPath, ...args.map((arg) => String(arg))];
-  if (isBatch) {
-    const unsafe = /["&|<>^%!\r\n]/;
-    if (allArgs.some((arg) => unsafe.test(arg))) {
-      throw new ToolError("UNSAFE_ARGUMENT", "批处理解释器参数包含不安全字符");
-    }
+  const batchArgs = [command, ...allArgs];
+  if (isBatch && batchArgs.some((arg) => !isSafeBatchArg(arg))) {
+    throw new ToolError("UNSAFE_ARGUMENT", "批处理解释器参数包含不安全字符或空值");
   }
   const argv = isBatch
-    ? ["/d", "/s", "/c", `"${[command, ...allArgs].map((arg) => `"${arg}"`).join(" ")}"`]
+    ? ["/d", "/s", "/c", `"${batchArgs.map(quoteBatchArg).join(" ")}"`]
     : allArgs;
   const result = await run(isBatch ? "cmd.exe" : command, argv, {
     cwd: options.cwd ?? process.cwd(),
