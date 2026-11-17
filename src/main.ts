@@ -263,6 +263,9 @@ export function mcpHelp(): string[] {
     "    serve      以 stdio 运行 MCP 服务（默认动作，给 MCP 客户端调用）",
     "    tools      列出全部 MCP 工具名与说明",
     "",
+    paint.white("  选项:"),
+    "    --toolsets N  选择 core/offline/live 或逗号分隔的领域（默认全部）",
+    "",
     paint.white("  MCP 客户端配置示例:"),
     '    { "command": "npx", "args": ["-y", "lceda-connect", "mcp"] }',
     "",
@@ -274,22 +277,58 @@ async function runMcpGroup(
   io: Io,
   env: NodeJS.ProcessEnv,
 ): Promise<number> {
-  const action = (argv[0] ?? "serve").trim().toLowerCase();
+  const positional: string[] = [];
+  let toolsets: string | undefined;
+  for (let index = 0; index < argv.length; index++) {
+    const token = argv[index] ?? "";
+    if (token === "--toolsets") {
+      const value = argv[++index];
+      if (!value || value.startsWith("-")) {
+        io.err(paint.red("  --toolsets 需要一个逗号分隔的值"));
+        return 1;
+      }
+      toolsets = value;
+      continue;
+    }
+    if (token.startsWith("--toolsets=")) {
+      const value = token.slice("--toolsets=".length).trim();
+      if (!value) {
+        io.err(paint.red("  --toolsets 需要一个逗号分隔的值"));
+        return 1;
+      }
+      toolsets = value;
+      continue;
+    }
+    positional.push(token);
+  }
+
+  const action = (positional[0] ?? "serve").trim().toLowerCase();
   if (action === "help" || action === "--help" || action === "-h") {
     print(io, mcpHelp());
     return 0;
   }
+  const selected = toolsets ?? env.LCEDA_TOOLSETS;
   if (action === "tools") {
     const { allTools } = await import("./mcp/registry.ts");
-    for (const tool of allTools()) {
-      io.out(`${paint.cyan(tool.name.padEnd(28))} ${tool.description.split("。")[0] ?? ""}`);
+    try {
+      for (const tool of allTools(selected)) {
+        io.out(`${paint.cyan(tool.name.padEnd(28))} ${tool.description.split("。")[0] ?? ""}`);
+      }
+      return 0;
+    } catch (error) {
+      io.err(paint.red(error instanceof Error ? error.message : String(error)));
+      return 1;
     }
-    return 0;
   }
   if (action === "serve") {
     const { serveStdio } = await import("./mcp/server.ts");
-    await serveStdio(env);
-    return 0;
+    try {
+      await serveStdio(env, selected);
+      return 0;
+    } catch (error) {
+      io.err(paint.red(error instanceof Error ? error.message : String(error)));
+      return 1;
+    }
   }
   io.err(paint.red(`  不认识的命令: ${action}`));
   print(io, mcpHelp());

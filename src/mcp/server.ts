@@ -1,72 +1,217 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { fileURLToPath } from "node:url";
+
+import {
+  RootsListChangedNotificationSchema,
+  type ServerNotification,
+} from "@modelcontextprotocol/sdk/types.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { listAssetFiles, readAssetText } from "../core/assets.ts";
 import { loadConfig } from "../core/config.ts";
+import { resolveMcpWritePath } from "../core/pathPolicy.ts";
 import { packageVersion } from "../main.ts";
-import { allTools } from "./registry.ts";
-import { errorResult, okResult } from "./result.ts";
-import type { ToolContext, ToolDef } from "./types.ts";
+import { allTools, toolsetsForTools, type ToolsetSelection } from "./registry.ts";
+import { errorResult, listSavedResults, okResult, readSavedResult } from "./result.ts";
+import {
+  ToolError,
+  normalizeToolContext,
+  type ToolContext,
+  type ToolContextInput,
+  type ToolDef,
+} from "./types.ts";
 
 export const SERVER_NAME = "lceda-connect";
 
 export interface CreateServerOptions {
   env?: NodeJS.ProcessEnv;
   tools?: ToolDef[];
+  toolsets?: ToolsetSelection;
+}
+
+function fileRootPath(uri: string): string | undefined {
+  try {
+    const parsed = new URL(uri);
+    if (parsed.protocol !== "file:") return undefined;
+    return fileURLToPath(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+function safeSkillPath(value: string): string {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    throw new ToolError("PATH_NOT_ALLOWED", "技能资源 URI 编码无效。", { path: value });
+  }
+  const parts = decoded.split(/[\\/]/u);
+  if (
+    decoded.length === 0 ||
+    decoded.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/.test(decoded) ||
+    parts.some((part) => part === "..")
+  ) {
+    throw new ToolError("PATH_NOT_ALLOWED", "技能资源路径必须是安全的相对路径。", { path: value });
+  }
+  return parts.join("/");
+}
+
+function resultResourceList(env: NodeJS.ProcessEnv) {
+  return listSavedResults(env).map((uri) => ({
+    uri,
+    name: uri.slice("lceda://results/".length),
+    mimeType: "application/json",
+  }));
 }
 
 /** 调用一个工具并把结果/异常统一包装成 MCP CallToolResult。供服务端与测试共用。 */
 export async function invokeTool(
   tool: ToolDef,
   args: Record<string, unknown>,
-  ctx: ToolContext,
+  ctx: ToolContextInput,
 ): Promise<ReturnType<typeof okResult>> {
   try {
-    return okResult(await tool.run(args, ctx));
+    if (tool.platforms && !tool.platforms.includes(process.platform)) {
+      throw new ToolError(
+        "UNSUPPORTED_PLATFORM",
+        `${tool.name} 不支持当前平台 ${process.platform}。`,
+        { tool: tool.name, platform: process.platform, supported: tool.platforms },
+      );
+    }
+    const normalized = normalizeToolContext(ctx);
+    return okResult(await tool.run(args, normalized), undefined, {
+      env: normalized.env,
+      outputSchema: tool.output !== undefined,
+    });
   } catch (error) {
-    return errorResult(error);
+    return errorResult(error, { env: ctx.env });
   }
 }
 
 export function createServer(options: CreateServerOptions = {}): McpServer {
   const env = options.env ?? process.env;
-  const ctx: ToolContext = { cfg: loadConfig(env), env };
+  const tools = options.tools ?? allTools(options.toolsets ?? env.LCEDA_TOOLSETS);
+  const cfg = loadConfig(env);
+  const toolNames = tools.map((tool) => tool.name);
+  const toolsets = toolsetsForTools(tools);
   const server = new McpServer(
     { name: SERVER_NAME, version: packageVersion() },
     { capabilities: { tools: {}, resources: {} } },
   );
 
-  for (const tool of options.tools ?? allTools()) {
+  let cachedRoots: string[] | undefined;
+  server.server.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
+    cachedRoots = undefined;
+  });
+
+  const roots = async (): Promise<string[]> => {
+    if (cachedRoots) return [...cachedRoots];
+    if (!server.server.getClientCapabilities()?.roots) {
+      cachedRoots = [];
+      return [];
+    }
+    const response = await server.server.listRoots();
+    cachedRoots = response.roots.flatMap((root) => {
+      const local = fileRootPath(root.uri);
+      return local ? [local] : [];
+    });
+    return [...cachedRoots];
+  };
+
+  const makeContext = (extra: {
+    signal: AbortSignal;
+    sendNotification: (notification: ServerNotification) => Promise<void>;
+    _meta?: { progressToken?: string | number };
+  }): ToolContext => ({
+    cfg,
+    env,
+    signal: extra.signal,
+    progress: async (progress, total, message) => {
+      const token = extra._meta?.progressToken;
+      if (token === undefined) return;
+      await extra.sendNotification({
+        method: "notifications/progress",
+        params: { progressToken: token, progress, total, message },
+      });
+    },
+    roots,
+    resolveWritePath: async (input) => resolveMcpWritePath(input, await roots(), env),
+    toolNames,
+    toolsets,
+  });
+
+  for (const tool of tools) {
     server.registerTool(
       tool.name,
       {
         description: tool.description,
         inputSchema: tool.input,
+        outputSchema: tool.output,
         annotations: tool.annotations,
       },
-      async (args: Record<string, unknown>) => await invokeTool(tool, args ?? {}, ctx),
+      async (args: Record<string, unknown>, extra) =>
+        await invokeTool(tool, args ?? {}, makeContext(extra)),
     );
   }
 
-  // 每个技能的 Markdown 文档作为只读 resource 暴露，客户端可按需拉取。
-  for (const rel of listAssetFiles("skills", (p) => p.endsWith(".md"))) {
-    const uri = `lceda://skills/${rel}`;
-    server.registerResource(
-      `skills/${rel}`,
-      uri,
-      { mimeType: "text/markdown", description: `技能文档 ${rel}` },
-      async () => ({
-        contents: [{ uri, mimeType: "text/markdown", text: readAssetText("skills", rel) }],
-      }),
-    );
-  }
+  const skillFiles = listAssetFiles("skills", (item) => item.endsWith(".md"));
+  const skillTemplate = new ResourceTemplate("lceda://skills/{+path}", {
+    list: async () => ({
+      resources: skillFiles.map((rel) => ({
+        uri: `lceda://skills/${encodeURI(rel)}`,
+        name: `skills/${rel}`,
+        mimeType: "text/markdown",
+        description: `技能文档 ${rel}`,
+      })),
+    }),
+  });
+  server.registerResource(
+    "skills",
+    skillTemplate,
+    { mimeType: "text/markdown", description: "随包附带的技能 Markdown 文档" },
+    async (uri, variables) => {
+      const rel = safeSkillPath(String(variables.path ?? ""));
+      if (!skillFiles.includes(rel)) throw new ToolError("NOT_FOUND", `没有技能文档 ${rel}`);
+      return {
+        contents: [
+          { uri: uri.toString(), mimeType: "text/markdown", text: readAssetText("skills", rel) },
+        ],
+      };
+    },
+  );
+
+  const resultTemplate = new ResourceTemplate("lceda://results/{id}", {
+    list: async () => ({ resources: resultResourceList(env) }),
+  });
+  server.registerResource(
+    "results",
+    resultTemplate,
+    { mimeType: "application/json", description: "超限 MCP 工具结果" },
+    async (_uri, variables) => {
+      const id = String(variables.id ?? "");
+      return {
+        contents: [
+          {
+            uri: `lceda://results/${id}`,
+            mimeType: "application/json",
+            text: readSavedResult(id, env),
+          },
+        ],
+      };
+    },
+  );
 
   return server;
 }
 
 /** 以 stdio 方式运行 MCP 服务。stdout 归协议所有，日志一律写 stderr。 */
-export async function serveStdio(env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  const server = createServer({ env });
+export async function serveStdio(
+  env: NodeJS.ProcessEnv = process.env,
+  toolsets?: ToolsetSelection,
+): Promise<void> {
+  const server = createServer({ env, toolsets });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write(`[${SERVER_NAME}] MCP 服务已在 stdio 上就绪 (v${packageVersion()})\n`);

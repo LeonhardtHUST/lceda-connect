@@ -1,3 +1,4 @@
+import path from "node:path";
 import { z } from "zod";
 
 import { assetExists, assetsDir, listAssetFiles, readAssetText } from "../core/assets.ts";
@@ -14,6 +15,16 @@ export function listSkills(): string[] {
   return [...names].sort();
 }
 
+function rejectUnsafePath(value: string, label: string): void {
+  if (
+    path.isAbsolute(value) ||
+    /^[A-Za-z]:[\\/]/.test(value) ||
+    value.split(/[\\/]/u).some((part) => part === "..")
+  ) {
+    throw new ToolError("PATH_NOT_ALLOWED", `${label} 必须是安全的相对路径。`, { [label]: value });
+  }
+}
+
 export const skillDocsTool = defineTool({
   name: "skill_docs",
   description:
@@ -26,10 +37,12 @@ export const skillDocsTool = defineTool({
   annotations: { readOnlyHint: true, openWorldHint: false },
   handler: ({ skill, file }) => {
     if (!skill) return { skills: listSkills() };
+    rejectUnsafePath(skill, "skill");
     if (!assetExists("skills", skill)) {
       throw new ToolError("NOT_FOUND", `没有名为 ${skill} 的技能`, { skills: listSkills() });
     }
     if (!file) return { skill, files: listAssetFiles(`skills/${skill}`) };
+    rejectUnsafePath(file, "file");
     if (!assetExists("skills", skill, file)) {
       throw new ToolError("NOT_FOUND", `${skill} 下没有 ${file}`);
     }
@@ -42,6 +55,15 @@ export const infoTool = defineTool({
   description:
     "返回 lceda-connect 的版本、assets 位置与已注册的工具清单，用来确认 MCP 服务是否就绪。",
   input: {},
+  output: {
+    name: z.string(),
+    version: z.string(),
+    assetsDir: z.string(),
+    platform: z.string(),
+    node: z.string(),
+    tools: z.array(z.string()),
+    toolsets: z.record(z.string(), z.array(z.string())),
+  },
   annotations: { readOnlyHint: true, openWorldHint: false },
   handler: (_args, ctx) => ({
     name: "lceda-connect",
@@ -49,6 +71,10 @@ export const infoTool = defineTool({
     assetsDir: assetsDir(ctx.env),
     platform: process.platform,
     node: process.version,
+    tools: [...(ctx.toolNames ?? [])],
+    toolsets: Object.fromEntries(
+      Object.entries(ctx.toolsets ?? {}).map(([key, names]) => [key, [...names]]),
+    ),
   }),
 });
 
