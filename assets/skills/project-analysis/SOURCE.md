@@ -4,7 +4,9 @@
 
 - 源仓库：<https://github.com/LeonhardtHUST/leonskill-easyeda-project-analysis>
 - 提交：`aaeba4bca20b8574418eed93fb3e93ecebe678de`（`git -C <源仓库> rev-parse HEAD`）
-- 许可证：MIT（见源仓库 `LICENSE`，Copyright (c) 2026 LeonhardtHUST）
+- 归属：其中自有部分在本项目中统一采用 GPL-3.0-only，不把中间自有仓库作为外部致谢，也不另设该自有部分的旧许可约束。
+- 继承的第三方来源：[chaser-star/dsh-eda-review](https://github.com/chaser-star/dsh-eda-review)，Copyright 2026 chaser-star，Apache-2.0。原来源仓库的 CREDITS.md 明确记录：网表重建规则、语义 diff 思路、`references/netlist-rebuild.md` 和 `references/review-playbook.md` 的审查方法来自该项目，不含其实现源码。对应本项目的 `src/epro2/pcb.ts`、`diff.ts` 与本目录文档。
+- 该继承内容保留 [Apache-2.0 全文](<LICENSE-APACHE-2.0>) 和原样 [NOTICE](<NOTICE>)，统一致谢见根目录 [CREDITS.md](<../../../CREDITS.md>)；不以自有归属覆盖第三方作者权益。
 - 收录文件：`SKILL.md`、`references/container-and-records.md`、`references/netlist-rebuild.md`、`references/output-contract.md`、`references/pcb-geometry.md`、`references/review-playbook.md`
 
 源仓库的运行时脚本已移植为 TypeScript，放在 `src/epro2/`。源仓库的测试夹具与用例分别移植到 `tests/fixtures/epro2/makeFixture.ts` 和 `tests/epro2.test.ts`。另有 `tests/epro2-integration.test.ts` 覆盖 MCP 工具注册、CLI 子命令与加密 ZIP 报错。

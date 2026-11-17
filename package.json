@@ -24,6 +24,7 @@
     "dist",
     "assets",
     "README.md",
+    "CREDITS.md",
     "THIRD_PARTY_NOTICES.md"
   ],
   "type": "module",

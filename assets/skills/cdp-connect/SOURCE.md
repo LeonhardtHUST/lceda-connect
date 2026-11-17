@@ -4,7 +4,7 @@
 
 - 来源仓库：`D:\Projects\GitHub\leonskill-easyeda-cdp-connect`
 - 提交：`9720f0802793d4e79aebd5374565419b8f1057e1`
-- 许可证：MIT（源仓库 `LICENSE`，Copyright (c) 2026 LeonhardtHUST）
+- 归属：自有内容在本项目中统一采用 GPL-3.0-only，不作为外部致谢，不另设源仓库旧许可约束。这里仅记录技术来源与移植映射。
 
 ## 原样收进 assets 的文件
 

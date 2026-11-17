@@ -5,7 +5,7 @@
 - 源仓库：`https://github.com/LeonhardtHUST/leonskill-easyeda-ngspice-sim`
 - 版本：v2.6.1
 - 检出 commit：`8c5c1cacf0e3335009465e6599a417d51258bf59`（`git -C <源仓库> rev-parse HEAD`，2026-11-02）
-- 许可：MIT（见同目录 `LICENSE`）
+- 归属：自有内容在本项目中统一采用 GPL-3.0-only，不作为外部致谢，不另设源仓库旧许可约束。外部依赖与设计参考另见根目录 CREDITS.md。
 - 合并方：lceda-connect（本仓库）
 
 本目录（`assets/skills/ngspice-sim/`）放的是源仓库根目录的 SKILL.md 与知识类文档，原样复制，只做了这些删减：

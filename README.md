@@ -1,6 +1,6 @@
 # lceda-connect
 
-嘉立创EDA专业版（EasyEDA Pro）的 MCP 服务与命令行工具。一个 npm 包，`npx` / `vpx` 直接可用。它由 9 个仓库合并而来（来源见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，合并方案见 [docs/merge-plan.md](docs/merge-plan.md)）。
+嘉立创EDA专业版（EasyEDA Pro）的 MCP 服务与命令行工具。一个 npm 包，`npx` / `vpx` 直接可用。它由 9 个仓库合并而来（外部项目致谢见 [CREDITS.md](CREDITS.md)，合并方案见 [docs/merge-plan.md](docs/merge-plan.md)）。
 
 | 命令组   | 做什么                                                                                              |
 | -------- | --------------------------------------------------------------------------------------------------- |
@@ -228,4 +228,4 @@ tests/                   单元与集成测试（vite-plus/test）
 
 ## License
 
-本项目采用 GPL-3.0-only，许可证全文见 [LICENSE](LICENSE)。第三方代码和文档保留各自的许可证与归属，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+本项目及合并进来的自有内容采用 GPL-3.0-only，全文见 [LICENSE](LICENSE)。外部项目致谢集中在 [CREDITS.md](CREDITS.md)；必要的第三方许可文本与边界见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

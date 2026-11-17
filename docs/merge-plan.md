@@ -62,7 +62,7 @@
 
 ## 已知问题与待决
 
-- 许可证：所有者已确认本项目采用 GPL-3.0-only，保留根目录 `LICENSE` 原文，并统一 `package.json` 与 README。第三方内容仍遵循其原许可；easyeda-api-skill 与 easyeda-client-cli 缺少 LICENSE 文件的问题不因本项目采用 GPL 而消除，发布前仍需核实授权。
+- 许可证与归属：项目及合并的自有内容统一采用 GPL-3.0-only，不再为自有仓库单列旧许可或外部致谢。第三方上游集中维护在 [CREDITS.md](../CREDITS.md)，技术来源映射继续保留；第三方 fork 的原始版权和许可不会因本地 fork 属于自有账号而丢弃，许可边界见 [第三方许可说明](../THIRD_PARTY_NOTICES.md)。
 - 官方客户端已自带 `lceda-pro --mcp`。本项目的差异点是：接入正在编辑的 GUI 实例（bridge + CDP）、离线工程文件解析与仿真、离线 API/格式检索。
 - 写入与提交由主 Agent 统一执行；实现 Worker 只在分配的目录内写文件，不做任何 git 操作。
 
