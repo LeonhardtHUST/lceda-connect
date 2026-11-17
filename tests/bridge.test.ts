@@ -16,6 +16,7 @@ import {
   collectStopTargets,
   formatStatusJson,
   isBuiltinBridgeScript,
+  listenerStopDecision,
   localTimestamp,
   localTimestampSeconds,
   readBridgeState,
@@ -154,6 +155,12 @@ test("collectStopTargets 按 wrapper → supervisor → node 排序并跳过自�
   ]);
   // 自身进程（即使命令行匹配）必须被排除
   expect(targets.some((item) => item.pid === 99)).toBe(false);
+});
+
+test("listenerStopDecision 只允许健康响应匹配的 bridge listener", () => {
+  expect(listenerStopDecision({ service: "easyeda-bridge" }, "easyeda-bridge")).toBe("verified");
+  expect(listenerStopDecision({ service: "other-service" }, "easyeda-bridge")).toBe("unknown");
+  expect(listenerStopDecision(null, "easyeda-bridge")).toBe("unknown");
 });
 
 test("sortStopTargets 同层按 pid 升序且不改动入参", () => {

@@ -21,6 +21,25 @@ export const BRIDGE_WINDOWS_PATH = "/eda-windows";
 export const BRIDGE_SELECT_WINDOW_PATH = "/eda-windows/select";
 export const BRIDGE_EXECUTE_PATH = "/execute";
 
+/** 单条 HTTP 请求体上限（4 MiB）。 */
+export const BRIDGE_MAX_BODY_BYTES = 4 * 1024 * 1024;
+/** 单条 execute 代码上限（1 MiB，按 UTF-8 字节计算）。 */
+export const BRIDGE_MAX_CODE_BYTES = 1 * 1024 * 1024;
+/** WebSocket 单帧上限（16 MiB）。 */
+export const BRIDGE_MAX_WS_PAYLOAD_BYTES = 16 * 1024 * 1024;
+/** 服务端同时等待的 execute 请求上限。 */
+export const BRIDGE_MAX_PENDING_REQUESTS = 64;
+/** agent 认证请求头。 */
+export const BRIDGE_TOKEN_HEADER = "X-Lceda-Bridge-Token";
+/** 运行态目录中的按端口 token 文件名格式。 */
+export const BRIDGE_TOKEN_FILE_PREFIX = "token-";
+export const BRIDGE_TOKEN_FILE_SUFFIX = ".txt";
+/** 认证相关环境变量。 */
+export const BRIDGE_TOKEN_ENV = "LCEDA_BRIDGE_TOKEN";
+export const BRIDGE_RUNTIME_ENV = "LCEDA_BRIDGE_RUNTIME";
+export const BRIDGE_AUTH_ENV = "LCEDA_BRIDGE_AUTH";
+export const BRIDGE_ALLOWED_ORIGINS_ENV = "LCEDA_BRIDGE_ALLOWED_ORIGINS";
+
 /** 单条 execute 请求的服务端超时（与原实现一致）。 */
 export const BRIDGE_REQUEST_TIMEOUT_MS = 30_000;
 

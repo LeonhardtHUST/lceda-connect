@@ -1,4 +1,9 @@
-import { expect, test } from "vite-plus/test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { request as httpRequest } from "node:http";
+import os from "node:os";
+import path from "node:path";
+
+import { afterAll, expect, test } from "vite-plus/test";
 import WebSocket from "ws";
 import { runBridgeClientCommand } from "../src/bridge/cli.ts";
 import {
@@ -14,7 +19,13 @@ import {
 } from "../src/bridge/client.ts";
 import { createMemoryIo } from "../src/core/io.ts";
 import {
+  BRIDGE_MAX_BODY_BYTES,
+  BRIDGE_MAX_CODE_BYTES,
   BRIDGE_SERVICE_ID,
+  BRIDGE_RUNTIME_ENV,
+  BRIDGE_TOKEN_FILE_PREFIX,
+  BRIDGE_TOKEN_FILE_SUFFIX,
+  BRIDGE_TOKEN_HEADER,
   rawDataText,
   type BridgeExecuteResponse,
   type BridgeHealthResponse,
@@ -23,6 +34,15 @@ import { startBridgeServer, type BridgeServerHandle } from "../src/bridge/server
 
 // 集成测试：真的起 HTTP + WS 服务，用 ws 包模拟编辑器端。
 // 端口用 0 让系统挑，避免和本机正在跑的 bridge 抢 49620-49629。
+
+const previousRuntime = process.env.LCEDA_BRIDGE_RUNTIME;
+const testRuntime = mkdtempSync(path.join(os.tmpdir(), "lceda-bridge-server-"));
+process.env.LCEDA_BRIDGE_RUNTIME = testRuntime;
+afterAll(() => {
+  if (previousRuntime === undefined) delete process.env.LCEDA_BRIDGE_RUNTIME;
+  else process.env.LCEDA_BRIDGE_RUNTIME = previousRuntime;
+  rmSync(testRuntime, { recursive: true, force: true });
+});
 
 interface FakeEditor {
   ws: WebSocket;
@@ -119,15 +139,54 @@ function baseUrl(server: BridgeServerHandle): string {
   return `http://127.0.0.1:${server.port}`;
 }
 
+function tokenHeaders(url: string): Record<string, string> {
+  const port = new URL(url).port;
+  const runtimeDir =
+    process.env[BRIDGE_RUNTIME_ENV] ??
+    path.join(
+      process.env.LOCALAPPDATA ?? path.join(os.homedir(), ".local", "share"),
+      "lceda-bridge",
+    );
+  const token = readFileSync(
+    path.join(runtimeDir, `${BRIDGE_TOKEN_FILE_PREFIX}${port}${BRIDGE_TOKEN_FILE_SUFFIX}`),
+    "utf8",
+  ).trim();
+  return { [BRIDGE_TOKEN_HEADER]: token };
+}
+
+async function requestWithHost(
+  port: number,
+  pathName: string,
+  headers: Record<string, string>,
+): Promise<number> {
+  return await new Promise<number>((resolve, reject) => {
+    const req = httpRequest(
+      {
+        host: "127.0.0.1",
+        port,
+        path: pathName,
+        method: "GET",
+        headers,
+      },
+      (res) => {
+        res.resume();
+        res.once("end", () => resolve(res.statusCode ?? 0));
+      },
+    );
+    req.once("error", reject);
+    req.end();
+  });
+}
+
 async function getJson<T>(url: string): Promise<{ status: number; headers: Headers; body: T }> {
-  const response = await fetch(url);
+  const response = await fetch(url, { headers: tokenHeaders(url) });
   return { status: response.status, headers: response.headers, body: (await response.json()) as T };
 }
 
 async function postJson<T>(url: string, payload: unknown): Promise<{ status: number; body: T }> {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...tokenHeaders(url) },
     body: JSON.stringify(payload),
   });
   return { status: response.status, body: (await response.json()) as T };
@@ -138,7 +197,7 @@ test("GET /health 字段与顺序、CORS、OPTIONS 与 404", async () => {
   try {
     const healthRes = await getJson<BridgeHealthResponse>(`${baseUrl(server)}/health`);
     expect(healthRes.status).toBe(200);
-    expect(healthRes.headers.get("access-control-allow-origin")).toBe("*");
+    expect(healthRes.headers.get("access-control-allow-origin")).toBeNull();
     expect(Object.keys(healthRes.body)).toEqual([
       "service",
       "status",
@@ -157,8 +216,8 @@ test("GET /health 字段与顺序、CORS、OPTIONS 与 404", async () => {
     expect(typeof healthRes.body.timestamp).toBe("number");
 
     const optionsRes = await fetch(`${baseUrl(server)}/health`, { method: "OPTIONS" });
-    expect(optionsRes.status).toBe(204);
-    expect(optionsRes.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(optionsRes.status).toBe(403);
+    expect(optionsRes.headers.get("access-control-allow-methods")).toBeNull();
 
     const notFound = await getJson<{ error: string }>(`${baseUrl(server)}/nope`);
     expect(notFound.status).toBe(404);
@@ -259,7 +318,10 @@ test("未连接 / 缺 code / 非法 JSON 的状态码", async () => {
 
     const badJson = await fetch(`${baseUrl(server)}/execute`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...tokenHeaders(`${baseUrl(server)}/execute`),
+      },
       body: "{ 不是 json",
     });
     expect(badJson.status).toBe(400);
@@ -441,7 +503,9 @@ test("agent 端 WS：ping/pong 与 execute 结果帧", async () => {
     result: "via-ws",
     timestamp: Date.now(),
   });
-  const agent = new WebSocket(`ws://127.0.0.1:${server.port}/agent`);
+  const agent = new WebSocket(`ws://127.0.0.1:${server.port}/agent`, {
+    headers: tokenHeaders(`${baseUrl(server)}/agent`),
+  });
   try {
     const frames: Record<string, unknown>[] = [];
     agent.on("message", (raw) => {
@@ -468,6 +532,109 @@ test("agent 端 WS：ping/pong 与 execute 结果帧", async () => {
   } finally {
     agent.terminate();
     editor.close();
+    await server.close();
+  }
+});
+
+test("startBridgeServer 强制回环且 HTTP body/code 超限返回 413", async () => {
+  await expect(startBridgeServer({ host: "0.0.0.0", port: 0, logger: () => {} })).rejects.toThrow(
+    "只能监听回环地址",
+  );
+  const server = await startServer();
+  try {
+    const oversizedCode = await fetch(`${baseUrl(server)}/execute`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...tokenHeaders(`${baseUrl(server)}/execute`),
+      },
+      body: JSON.stringify({ code: "x".repeat(BRIDGE_MAX_CODE_BYTES + 1) }),
+    });
+    expect(oversizedCode.status).toBe(413);
+
+    const oversizedBody = await fetch(`${baseUrl(server)}/execute`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...tokenHeaders(`${baseUrl(server)}/execute`),
+      },
+      body: JSON.stringify({ code: "x", padding: "x".repeat(BRIDGE_MAX_BODY_BYTES) }),
+    });
+    expect(oversizedBody.status).toBe(413);
+  } finally {
+    await server.close();
+  }
+});
+
+test("agent HTTP 安全闸口：无 token 401、伪造 Host 421、跨源 Origin 403、AUTH=off 放行", async () => {
+  const server = await startServer();
+  const url = `${baseUrl(server)}/eda-windows`;
+  const token = tokenHeaders(url);
+  const previousAuth = process.env.LCEDA_BRIDGE_AUTH;
+  try {
+    const noToken = await fetch(url);
+    expect(noToken.status).toBe(401);
+
+    const forgedHost = await requestWithHost(server.port, "/eda-windows", {
+      ...token,
+      host: `example.test:${server.port}`,
+    });
+    expect(forgedHost).toBe(421);
+
+    const crossOrigin = await fetch(url, {
+      headers: { ...token, origin: "https://evil.example" },
+    });
+    expect(crossOrigin.status).toBe(403);
+
+    process.env.LCEDA_BRIDGE_AUTH = "off";
+    const authOff = await fetch(url);
+    expect(authOff.status).toBe(200);
+  } finally {
+    if (previousAuth === undefined) delete process.env.LCEDA_BRIDGE_AUTH;
+    else process.env.LCEDA_BRIDGE_AUTH = previousAuth;
+    await server.close();
+  }
+});
+
+test("execute pendingRequests 达到 64 后返回 503", async () => {
+  const server = await startServer({ requestTimeoutMs: 2_000 });
+  const editor = await connectEditor(server.port, "win-pending");
+  editor.onExecute = () => null;
+  const url = `${baseUrl(server)}/execute`;
+  try {
+    const pending = Array.from({ length: 64 }, () =>
+      postJson<BridgeExecuteResponse>(url, { code: "return 1;" }),
+    );
+    await waitFor(async () => {
+      const healthState = await health(server.port);
+      return healthState.pendingRequests === 64 ? healthState : null;
+    });
+    const overflow = await postJson<BridgeExecuteResponse>(url, { code: "return overflow;" });
+    expect(overflow.status).toBe(503);
+    expect(overflow.body.error).toContain("BRIDGE_PENDING_LIMIT");
+    editor.close();
+    await Promise.all(pending);
+  } finally {
+    editor.close();
+    await server.close();
+  }
+});
+
+test("/eda Origin 策略允许扩展来源并拒绝普通网页", async () => {
+  const server = await startServer();
+  const open = (origin: string): Promise<WebSocket> =>
+    new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${server.port}/eda`, { origin });
+      ws.once("open", () => resolve(ws));
+      ws.once("error", reject);
+    });
+  try {
+    for (const origin of ["null", "file://", "app://easyeda", "https://pro.lceda.cn"]) {
+      const ws = await open(origin);
+      ws.terminate();
+    }
+    await expect(open("https://evil.example")).rejects.toThrow();
+  } finally {
     await server.close();
   }
 });

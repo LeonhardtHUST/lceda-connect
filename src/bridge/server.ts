@@ -1,20 +1,35 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { isIP } from "node:net";
 import { createConnection } from "node:net";
+import os from "node:os";
+import path from "node:path";
 
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 
 import {
+  BRIDGE_ALLOWED_ORIGINS_ENV,
+  BRIDGE_AUTH_ENV,
   BRIDGE_EDA_PATH,
   BRIDGE_EXECUTE_PATH,
   BRIDGE_HEALTH_PATH,
   BRIDGE_LISTEN_HOST,
+  BRIDGE_MAX_BODY_BYTES,
+  BRIDGE_MAX_CODE_BYTES,
+  BRIDGE_MAX_PENDING_REQUESTS,
+  BRIDGE_MAX_WS_PAYLOAD_BYTES,
   BRIDGE_PORT_END,
   BRIDGE_PORT_START,
   BRIDGE_REQUEST_TIMEOUT_MS,
+  BRIDGE_RUNTIME_ENV,
   BRIDGE_SELECT_WINDOW_PATH,
   BRIDGE_SERVICE_ID,
+  BRIDGE_TOKEN_ENV,
+  BRIDGE_TOKEN_FILE_PREFIX,
+  BRIDGE_TOKEN_FILE_SUFFIX,
+  BRIDGE_TOKEN_HEADER,
   BRIDGE_WINDOWS_PATH,
   asBridgeMessage,
   rawDataText,
@@ -51,6 +66,8 @@ export interface BridgeServerOptions {
   logger?: (line: string) => void;
   /** 启动前先扫区间里有没有同款服务，默认 true；指定 port 时不扫。 */
   reuseExisting?: boolean;
+  /** 仅供明确的远程部署使用；CLI 不暴露该开关。 */
+  allowRemote?: boolean;
 }
 
 interface PendingRequest {
@@ -71,15 +88,110 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
+  return (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    (isIP(normalized) === 4 && normalized.startsWith("127."))
+  );
+}
+
+function requestHostMatches(req: IncomingMessage, port: number): boolean {
+  const value = req.headers.host?.toLowerCase();
+  return (
+    value === `127.0.0.1:${port}` || value === `localhost:${port}` || value === `[::1]:${port}`
+  );
+}
+
+function configuredOrigins(): Set<string> {
+  return new Set(
+    (process.env[BRIDGE_ALLOWED_ORIGINS_ENV] ?? "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0),
+  );
+}
+
+function agentOriginAllowed(origin: string | undefined, allowlist: Set<string>): boolean {
+  return origin === undefined || allowlist.has(origin);
+}
+
+function edaOriginAllowed(origin: string | undefined, allowlist: Set<string>): boolean {
+  if (origin === undefined || origin === "null" || allowlist.has(origin)) return true;
+  try {
+    const parsed = new URL(origin);
+    const protocol = parsed.protocol.toLowerCase();
+    if (protocol !== "http:" && protocol !== "https:") return true;
+    const hostname = parsed.hostname.toLowerCase();
+    return (
+      isLoopbackHost(hostname) ||
+      hostname === "lceda.cn" ||
+      hostname.endsWith(".lceda.cn") ||
+      hostname === "easyeda.com" ||
+      hostname.endsWith(".easyeda.com")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function tokenMatches(provided: string | undefined, expected: string): boolean {
+  if (!provided) return false;
+  const received = Buffer.from(provided);
+  const wanted = Buffer.from(expected);
+  return received.length === wanted.length && timingSafeEqual(received, wanted);
+}
+
+function authDisabled(): boolean {
+  return process.env[BRIDGE_AUTH_ENV]?.toLowerCase() === "off";
+}
+
+function unauthorized(res: ServerResponse): void {
+  replyJson(res, 401, {
+    errorCode: "BRIDGE_UNAUTHORIZED",
+    error: "bridge token required (set X-Lceda-Bridge-Token or LCEDA_BRIDGE_AUTH=off)",
+  });
+}
+
+function forbidden(res: ServerResponse, status = 403): void {
+  replyJson(res, status, { error: "Forbidden" });
+}
+
 function replyJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
 }
 
+class BodyTooLargeError extends Error {}
+
 async function readBody(req: IncomingMessage): Promise<string> {
-  let body = "";
-  for await (const chunk of req) body += String(chunk);
-  return body;
+  const contentLength = Number(req.headers["content-length"] ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > BRIDGE_MAX_BODY_BYTES) {
+    req.resume();
+    throw new BodyTooLargeError("Request body exceeds 4 MiB limit");
+  }
+  return await new Promise<string>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let failed = false;
+    req.on("data", (chunk: Buffer) => {
+      if (failed) return;
+      size += chunk.length;
+      if (size > BRIDGE_MAX_BODY_BYTES) {
+        failed = true;
+        chunks.length = 0;
+        reject(new BodyTooLargeError("Request body exceeds 4 MiB limit"));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.once("end", () => {
+      if (!failed) resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.once("error", reject);
+    req.once("aborted", () => reject(new Error("Request aborted")));
+  });
 }
 
 /** 探测端口有没有人在监听（连得上就算占用，不管对面是什么服务）。 */
@@ -168,10 +280,19 @@ export async function startBridgeServer(
   const portLast = options.portLast ?? BRIDGE_PORT_END;
   const requestTimeoutMs = options.requestTimeoutMs ?? BRIDGE_REQUEST_TIMEOUT_MS;
   const logger = options.logger ?? defaultLogger;
+  if (!options.allowRemote && !isLoopbackHost(host)) {
+    throw new Error(
+      `bridge 只能监听回环地址，收到 host=${host}；如确需远程部署请显式 allowRemote=true`,
+    );
+  }
+  const allowlist = configuredOrigins();
 
   const edaClients = new Map<string, WebSocket>();
   const pendingRequests = new Map<string, PendingRequest>();
   let activeEdaWindowId: string | null = null;
+  let actualPort = 0;
+  let token = "";
+  let tokenFilePath: string | null = null;
 
   if (options.port === undefined && options.reuseExisting !== false) {
     const existing = await findExistingInstance(portFirst, portLast, host);
@@ -198,6 +319,9 @@ export async function startBridgeServer(
   }
 
   function executeOnEda(code: string, windowId?: string): Promise<unknown> {
+    if (Buffer.byteLength(code, "utf8") > BRIDGE_MAX_CODE_BYTES) {
+      return Promise.reject(new Error("BRIDGE_CODE_TOO_LARGE: code exceeds 1 MiB limit"));
+    }
     return new Promise<unknown>((resolve, reject) => {
       const targetWindowId = windowId || activeEdaWindowId;
       if (!targetWindowId) {
@@ -216,6 +340,10 @@ export async function startBridgeServer(
         return;
       }
 
+      if (pendingRequests.size >= BRIDGE_MAX_PENDING_REQUESTS) {
+        reject(new Error("BRIDGE_PENDING_LIMIT: too many pending requests"));
+        return;
+      }
       const id = randomUUID();
       const timer = setTimeout(() => {
         pendingRequests.delete(id);
@@ -285,12 +413,17 @@ export async function startBridgeServer(
   }
 
   function registerEdaWindow(windowId: string, client: WebSocket): void {
+    const previous = edaClients.get(windowId);
+    if (previous && previous !== client) {
+      logger(`[WS] EDA window ${windowId} replaced by a new connection`);
+    }
     edaClients.set(windowId, client);
     if (edaClients.size === 1 || !activeEdaWindowId) activeEdaWindowId = windowId;
     logger(`[WS] EDA window registered: ${windowId}, total: ${edaClients.size}`);
   }
 
-  function dropEdaWindow(windowId: string): void {
+  function dropEdaWindow(windowId: string, client?: WebSocket): void {
+    if (client && edaClients.get(windowId) !== client) return;
     edaClients.delete(windowId);
     if (activeEdaWindowId === windowId) {
       activeEdaWindowId = edaClients.keys().next().value ?? null;
@@ -311,13 +444,13 @@ export async function startBridgeServer(
   });
 
   async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (!requestHostMatches(req, actualPort)) {
+      replyJson(res, 421, { error: "Misdirected Request" });
+      return;
+    }
 
     if (req.method === "OPTIONS") {
-      res.writeHead(204);
-      res.end();
+      forbidden(res);
       return;
     }
 
@@ -332,6 +465,19 @@ export async function startBridgeServer(
         timestamp: Date.now(),
       };
       replyJson(res, 200, health);
+      return;
+    }
+
+    const origin = req.headers.origin;
+    if (!agentOriginAllowed(origin, allowlist)) {
+      logger(`[HTTP] Rejected agent Origin: ${origin ?? "(none)"}`);
+      forbidden(res);
+      return;
+    }
+    const tokenHeader = req.headers[BRIDGE_TOKEN_HEADER.toLowerCase()];
+    const providedToken = Array.isArray(tokenHeader) ? tokenHeader[0] : tokenHeader;
+    if (!authDisabled() && !tokenMatches(providedToken, token)) {
+      unauthorized(res);
       return;
     }
 
@@ -353,7 +499,11 @@ export async function startBridgeServer(
       let payload: unknown;
       try {
         payload = JSON.parse(await readBody(req));
-      } catch {
+      } catch (error) {
+        if (error instanceof BodyTooLargeError) {
+          replyJson(res, 413, { error: error.message });
+          return;
+        }
         replyJson(res, 400, { error: "Invalid request body" });
         return;
       }
@@ -374,7 +524,11 @@ export async function startBridgeServer(
       let payload: unknown;
       try {
         payload = JSON.parse(await readBody(req));
-      } catch {
+      } catch (error) {
+        if (error instanceof BodyTooLargeError) {
+          replyJson(res, 413, { error: error.message });
+          return;
+        }
         replyJson(res, 400, { error: "Invalid request body" });
         return;
       }
@@ -384,6 +538,10 @@ export async function startBridgeServer(
       const windowId = typeof record.windowId === "string" ? record.windowId : undefined;
       if (typeof code !== "string" || code === "") {
         replyJson(res, 400, { error: 'Missing "code" field (string)' });
+        return;
+      }
+      if (Buffer.byteLength(code, "utf8") > BRIDGE_MAX_CODE_BYTES) {
+        replyJson(res, 413, { error: "BRIDGE_CODE_TOO_LARGE: code exceeds 1 MiB limit" });
         return;
       }
       try {
@@ -397,7 +555,11 @@ export async function startBridgeServer(
       } catch (error) {
         const message = errorMessage(error);
         const status =
-          error instanceof EdaNotConnectedError || message.includes("not connected") ? 503 : 500;
+          error instanceof EdaNotConnectedError ||
+          message.includes("not connected") ||
+          message.startsWith("BRIDGE_PENDING_LIMIT:")
+            ? 503
+            : 500;
         const body: BridgeExecuteResponse = { success: false, error: message };
         replyJson(res, status, body);
       }
@@ -407,10 +569,41 @@ export async function startBridgeServer(
     replyJson(res, 404, { error: "Not found" });
   }
 
-  const wss = new WebSocketServer({ server: httpServer });
+  const wss = new WebSocketServer({
+    server: httpServer,
+    maxPayload: BRIDGE_MAX_WS_PAYLOAD_BYTES,
+    verifyClient: ({ req }, done) => {
+      if (!requestHostMatches(req, actualPort)) {
+        done(false, 421, "Misdirected Request");
+        return;
+      }
+      const requestUrl = new URL(req.url ?? "/", "http://localhost");
+      const isEda = requestUrl.pathname === BRIDGE_EDA_PATH;
+      const origin = req.headers.origin;
+      if (!(isEda ? edaOriginAllowed(origin, allowlist) : agentOriginAllowed(origin, allowlist))) {
+        logger(`[WS] Rejected ${isEda ? "EDA" : "agent"} Origin: ${origin ?? "(none)"}`);
+        done(false, 403, "Forbidden Origin");
+        return;
+      }
+      const header = req.headers[BRIDGE_TOKEN_HEADER.toLowerCase()];
+      const headerToken = Array.isArray(header) ? header[0] : header;
+      const queryToken = requestUrl.searchParams.get("token") ?? undefined;
+      if (
+        !isEda &&
+        !authDisabled() &&
+        !tokenMatches(headerToken, token) &&
+        !tokenMatches(queryToken, token)
+      ) {
+        done(false, 401, "BRIDGE_UNAUTHORIZED");
+        return;
+      }
+      done(true);
+    },
+  });
 
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
-    const clientType: BridgeClientType = req.url === BRIDGE_EDA_PATH ? "eda" : "agent";
+    const requestUrl = new URL(req.url ?? "/", "http://localhost");
+    const clientType: BridgeClientType = requestUrl.pathname === BRIDGE_EDA_PATH ? "eda" : "agent";
     logger(`[WS] New ${clientType} connection from ${req.socket.remoteAddress ?? "?"}`);
 
     ws.send(
@@ -465,6 +658,17 @@ export async function startBridgeServer(
           if (message.type === "execute") {
             const code = typeof message.code === "string" ? message.code : "";
             const windowId = typeof message.windowId === "string" ? message.windowId : undefined;
+            if (Buffer.byteLength(code, "utf8") > BRIDGE_MAX_CODE_BYTES) {
+              ws.send(
+                JSON.stringify({
+                  type: "error",
+                  id: message.id,
+                  error: "BRIDGE_CODE_TOO_LARGE: code exceeds 1 MiB limit",
+                  timestamp: Date.now(),
+                }),
+              );
+              return;
+            }
             try {
               const result = await executeOnEda(code, windowId);
               ws.send(
@@ -502,7 +706,6 @@ export async function startBridgeServer(
     candidates.push(options.port);
   }
 
-  let actualPort = 0;
   let lastError: Error | null = null;
   for (const candidate of candidates) {
     try {
@@ -522,6 +725,20 @@ export async function startBridgeServer(
   if (actualPort === 0) {
     throw lastError ?? new Error(`端口区间 ${portFirst}-${portLast} 全被占用`);
   }
+
+  token = process.env[BRIDGE_TOKEN_ENV]?.trim() || randomBytes(32).toString("hex");
+  const runtimeDir =
+    process.env[BRIDGE_RUNTIME_ENV] ??
+    path.join(
+      process.env.LOCALAPPDATA ?? path.join(os.homedir(), ".local", "share"),
+      "lceda-bridge",
+    );
+  tokenFilePath = path.join(
+    runtimeDir,
+    `${BRIDGE_TOKEN_FILE_PREFIX}${actualPort}${BRIDGE_TOKEN_FILE_SUFFIX}`,
+  );
+  await mkdir(runtimeDir, { recursive: true });
+  await writeFile(tokenFilePath, `${token}\n`, { encoding: "utf8", mode: 0o600 });
 
   logger(
     [
@@ -561,6 +778,13 @@ export async function startBridgeServer(
     });
     httpServer.closeAllConnections();
     await done;
+    if (tokenFilePath) {
+      try {
+        await unlink(tokenFilePath);
+      } catch {
+        // token 文件可能已由外部清理
+      }
+    }
   }
 
   return { port: actualPort, host, reused: false, close };

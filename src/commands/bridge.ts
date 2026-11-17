@@ -104,6 +104,15 @@ export interface ProcessLike {
 
 export type StopTargetKind = "wrapper" | "supervisor" | "node";
 
+export type ListenerStopDecision = "verified" | "unknown";
+
+export function listenerStopDecision(
+  health: BridgeHealth | null,
+  serviceId: string,
+): ListenerStopDecision {
+  return health?.service === serviceId ? "verified" : "unknown";
+}
+
 export interface ClassifiedCommand {
   kind: StopTargetKind;
   order: number;
@@ -784,6 +793,7 @@ async function runStop(ctx: CommandContext): Promise<number> {
   io.out(paint.cyan("  正在停止 EasyEDA Bridge ..."));
 
   const killed: number[] = [];
+  const unknownListeners: TcpListener[] = [];
   for (const target of targets) {
     io.out(
       paint.gray(
@@ -795,17 +805,38 @@ async function runStop(ctx: CommandContext): Promise<number> {
   }
   for (const listener of listeners) {
     if (killed.includes(listener.pid)) continue;
+    const health = await probeHealth(listener.port, bridge.bindHost);
+    const verified = listenerStopDecision(health, bridge.serviceId) === "verified";
+    if (!verified) {
+      unknownListeners.push(listener);
+      continue;
+    }
     io.out(paint.gray(`    - port ${listener.port}  pid ${listener.pid}`));
     await killProcessTree(listener.pid);
     killed.push(listener.pid);
   }
 
-  // 兜底：等端口真正释放，没释放就继续杀
+  if (unknownListeners.length > 0) {
+    io.out(
+      paint.yellow(
+        `    跳过未知 listener: ${unknownListeners.map((item) => `${item.port}/pid ${item.pid}`).join(", ")}`,
+      ),
+    );
+  }
+
+  // 兜底：等已验证 bridge 端口真正释放；未知 listener 始终跳过
   let left: TcpListener[] = [];
   for (let attempt = 0; attempt < STOP_POLL_ATTEMPTS; attempt += 1) {
     left = await listListeners(bridge.portFirst, bridge.portLast);
     if (left.length === 0) break;
-    for (const listener of left) await killProcessTree(listener.pid);
+    for (const listener of left) {
+      if (killed.includes(listener.pid)) continue;
+      if (unknownListeners.some((item) => item.pid === listener.pid)) continue;
+      const health = await probeHealth(listener.port, bridge.bindHost);
+      if (listenerStopDecision(health, bridge.serviceId) !== "verified") continue;
+      await killProcessTree(listener.pid);
+      killed.push(listener.pid);
+    }
     await sleep(STOP_POLL_MS);
   }
 

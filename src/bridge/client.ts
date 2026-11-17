@@ -1,8 +1,17 @@
+import { readFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import {
   BRIDGE_LISTEN_HOST,
   BRIDGE_PORT_END,
   BRIDGE_PORT_START,
+  BRIDGE_RUNTIME_ENV,
   BRIDGE_SERVICE_ID,
+  BRIDGE_TOKEN_ENV,
+  BRIDGE_TOKEN_FILE_PREFIX,
+  BRIDGE_TOKEN_FILE_SUFFIX,
+  BRIDGE_TOKEN_HEADER,
   type BridgeHealthResponse,
   type BridgeSelectWindowResponse,
   type BridgeWindowsResponse,
@@ -16,13 +25,19 @@ import {
  *   NO_BRIDGE=2 / NOT_CONNECTED=3 / PROTOCOL=4 / TIMEOUT=5
  */
 
-export type BridgeErrorCode = "NO_BRIDGE" | "NOT_CONNECTED" | "PROTOCOL" | "TIMEOUT";
+export type BridgeErrorCode =
+  | "NO_BRIDGE"
+  | "NOT_CONNECTED"
+  | "PROTOCOL"
+  | "TIMEOUT"
+  | "BRIDGE_UNAUTHORIZED";
 
 const EXIT_CODES: Record<BridgeErrorCode, number> = {
   NO_BRIDGE: 2,
   NOT_CONNECTED: 3,
   PROTOCOL: 4,
   TIMEOUT: 5,
+  BRIDGE_UNAUTHORIZED: 6,
 };
 
 export class BridgeClientError extends Error {
@@ -49,6 +64,8 @@ export function bridgeErrorHint(code: BridgeErrorCode): string {
       return "请求超时：确认编辑器窗口没有卡住，或调大 timeoutMs。";
     case "PROTOCOL":
       return "协议/HTTP 错误：检查 bridge 版本与本工具是否一致，必要时 lceda-bridge restart。";
+    case "BRIDGE_UNAUTHORIZED":
+      return "bridge 拒绝了请求：读取 token 文件或设置 LCEDA_BRIDGE_TOKEN；兼容旧脚本可设置 LCEDA_BRIDGE_AUTH=off。";
   }
 }
 
@@ -56,6 +73,10 @@ export interface BridgeClientOptions {
   host?: string;
   /** 单次 HTTP 请求超时。 */
   timeoutMs?: number;
+  /** 与超时信号合并的外部取消信号。 */
+  signal?: AbortSignal;
+  /** 显式 token；缺省自动读环境变量或运行态文件。 */
+  token?: string;
 }
 
 export interface BridgeDiscoveryOptions extends BridgeClientOptions {
@@ -78,6 +99,33 @@ export interface BridgeExecuteOptions extends BridgeClientOptions {
 const PROBE_TIMEOUT_MS = 800;
 const DEFAULT_EXECUTE_TIMEOUT_MS = 35_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+
+function bridgeToken(port: number, explicit?: string): string | undefined {
+  if (explicit) return explicit;
+  const fromEnv = process.env[BRIDGE_TOKEN_ENV]?.trim();
+  if (fromEnv) return fromEnv;
+  const runtimeDir =
+    process.env[BRIDGE_RUNTIME_ENV] ??
+    path.join(
+      process.env.LOCALAPPDATA ?? path.join(os.homedir(), ".local", "share"),
+      "lceda-bridge",
+    );
+  const tokenPath = path.join(
+    runtimeDir,
+    `${BRIDGE_TOKEN_FILE_PREFIX}${port}${BRIDGE_TOKEN_FILE_SUFFIX}`,
+  );
+  try {
+    const value = readFileSync(tokenPath, "utf8").trim();
+    return value || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function endpointUrl(host: string, port: number, pathName: string): string {
+  const normalized = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return `http://${normalized}:${port}${pathName}`;
+}
 
 interface HttpResult {
   status: number;
@@ -109,10 +157,14 @@ async function request(
 ): Promise<HttpResult> {
   const host = options.host ?? BRIDGE_LISTEN_HOST;
   const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = options.signal ? AbortSignal.any([timeoutSignal, options.signal]) : timeoutSignal;
   const headers = new Headers({ accept: "application/json" });
+  const token = bridgeToken(port, options.token);
+  if (token) headers.set(BRIDGE_TOKEN_HEADER, token);
   const init: RequestInit = {
     method,
-    signal: AbortSignal.timeout(timeoutMs),
+    signal,
     headers,
   };
   if (options.payload !== undefined) {
@@ -122,7 +174,7 @@ async function request(
 
   let response: Response;
   try {
-    response = await fetch(`http://${host}:${port}${pathName}`, init);
+    response = await fetch(endpointUrl(host, port, pathName), init);
   } catch (error) {
     const cause = errorCause(error);
     if (cause.name === "TimeoutError" || cause.name === "AbortError") {
@@ -151,6 +203,12 @@ async function request(
         `响应不是 JSON（HTTP ${response.status}）：${text.slice(0, 200)}`,
       );
     }
+  }
+  if (response.status === 401) {
+    throw new BridgeClientError(
+      "BRIDGE_UNAUTHORIZED",
+      "bridge token 无效或缺失（请设置 LCEDA_BRIDGE_TOKEN，或读取运行态 token 文件）",
+    );
   }
   return { status: response.status, data };
 }
@@ -301,23 +359,30 @@ export class BridgeClient {
   readonly port: number;
   readonly host: string;
   private readonly defaultTimeoutMs: number | undefined;
+  private readonly defaultToken: string | undefined;
 
   constructor(port: number, options: BridgeClientOptions = {}) {
     this.port = port;
     this.host = options.host ?? BRIDGE_LISTEN_HOST;
     this.defaultTimeoutMs = options.timeoutMs;
+    this.defaultToken = options.token;
   }
 
   static async discover(options: BridgeDiscoveryOptions = {}): Promise<BridgeClient | null> {
     const endpoint = await discover(options);
     if (!endpoint) return null;
-    return new BridgeClient(endpoint.port, { host: endpoint.host, timeoutMs: options.timeoutMs });
+    return new BridgeClient(endpoint.port, {
+      host: endpoint.host,
+      timeoutMs: options.timeoutMs,
+      token: options.token,
+    });
   }
 
   private options(): BridgeClientOptions {
     return {
       host: this.host,
       ...(this.defaultTimeoutMs ? { timeoutMs: this.defaultTimeoutMs } : {}),
+      ...(this.defaultToken ? { token: this.defaultToken } : {}),
     };
   }
 
@@ -336,6 +401,8 @@ export class BridgeClient {
   async execute(code: string, options: BridgeExecuteOptions = {}): Promise<unknown> {
     return await execute(this.port, code, {
       host: this.host,
+      token: options.token,
+      signal: options.signal,
       windowId: options.windowId,
       timeoutMs: options.timeoutMs ?? this.defaultTimeoutMs,
     });
