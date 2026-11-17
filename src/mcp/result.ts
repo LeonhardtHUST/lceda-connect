@@ -200,5 +200,15 @@ export function errorResult(error: unknown, options: ResultOptions = {}): CallTo
     return { ...okResult(payload, MAX_RESULT_BYTES, options), isError: true };
   }
   const message = error instanceof Error ? error.message : String(error);
+  // 子进程 / fetch 被 MCP 请求的 signal 取消时抛 AbortError，统一报 CANCELLED，不当成内部错误。
+  if (
+    error instanceof Error &&
+    (error.name === "AbortError" || (error as { code?: unknown }).code === "CANCELLED")
+  ) {
+    return {
+      ...okResult({ error: "CANCELLED", message: "请求已取消" }, MAX_RESULT_BYTES, options),
+      isError: true,
+    };
+  }
   return { ...okResult({ error: "INTERNAL", message }, MAX_RESULT_BYTES, options), isError: true };
 }

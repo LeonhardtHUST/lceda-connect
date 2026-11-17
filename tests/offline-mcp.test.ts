@@ -4,10 +4,14 @@ import path from "node:path";
 
 import { expect, test } from "vite-plus/test";
 
+import { eprj3GatesTool } from "../src/eprj3/mcpTools.ts";
 import { reportTool } from "../src/epro2/mcpTools.ts";
 import { formatTools } from "../src/format/mcpTools.ts";
 import { metricsTool } from "../src/sim/mcpTools.ts";
+import { errorResult } from "../src/mcp/result.ts";
 import { ToolError } from "../src/mcp/types.ts";
+
+const BLINK = path.join(import.meta.dirname, "fixtures", "eprj3", "blink");
 
 const cfg = {} as never;
 const env = {};
@@ -42,6 +46,40 @@ test("offline MCP annotations and format descriptions", () => {
   expect(metricsTool.annotations).toMatchObject({ readOnlyHint: false });
   expect(reportTool.annotations).toMatchObject({ destructiveHint: true });
   for (const tool of formatTools) expect(tool.description.length).toBeLessThanOrEqual(300);
+});
+
+test("eprj3_gates 每跑完一个门报告一次进度", async () => {
+  const calls: [number, number | undefined, string | undefined][] = [];
+  const result = (await eprj3GatesTool.run(
+    { dir: BLINK, gates: ["lint", "drc"] },
+    {
+      cfg,
+      env,
+      progress: async (done, total, message) => {
+        calls.push([done, total, message]);
+      },
+    },
+  )) as { results: unknown[] };
+  expect(result.results).toHaveLength(2);
+  expect(calls).toEqual([
+    [1, 2, "lint"],
+    [2, 2, "drc"],
+  ]);
+}, 60_000);
+
+test("请求已取消时 eprj3_gates 返回 CANCELLED 而不是 INTERNAL", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const error = await eprj3GatesTool
+    .run({ dir: BLINK, gates: ["lint"] }, { cfg, env, signal: controller.signal })
+    .then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+  expect(error).toBeDefined();
+  const result = errorResult(error);
+  expect(result.isError).toBe(true);
+  expect(JSON.parse(result.content[0]?.text ?? "{}")).toMatchObject({ error: "CANCELLED" });
 });
 
 test("offline MCP error codes are namespaced", () => {

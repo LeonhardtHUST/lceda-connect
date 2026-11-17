@@ -259,27 +259,29 @@ export const eprj3GatesTool = defineTool({
   description:
     "跑源技能的审计门禁（sidecar）：erc（电气规则与网表比对）、drc（几何 / 间距 / 铺铜）、" +
     "lint（原理图布局可读性）、intent（design.json 设计意图）。" +
-    "erc/drc/lint 需要工程目录；intent 需要 design 路径，不给会报错。只读，不改工程文件。",
+    "erc/drc/lint 需要工程目录；intent 需要 design 路径，不给会报错。只读，不改工程文件，" +
+    "但每个门会起一个 node 子进程；每跑完一个门报告一次进度，可随请求取消。",
   input: {
     dir: dirSchema,
     gates: gatesSchema.optional(),
     design: z.string().optional().describe("design.json 路径；erc 用作网表对比，intent 必填"),
   },
   annotations: { readOnlyHint: true, openWorldHint: false },
-  handler: async ({ dir, gates, design }) => {
+  handler: async ({ dir, gates, design }, ctx) => {
     const project = requireProject(dir);
     // intent 只能校验 design.json；没给 design 时默认不跑它，避免默认调用直接报错。
     const selected = (gates ??
       (design === undefined ? (["erc", "drc", "lint"] as const) : EPRJ3_GATE_NAMES)) as Eprj3Gate[];
     const results: Record<string, unknown>[] = [];
-    for (const gate of selected) {
+    for (const [index, gate] of selected.entries()) {
       const args = eprj3GateArgs(
         gate,
         project.rootDir,
         design === undefined ? null : path.resolve(design),
       );
-      const result = await runEprj3Script(EPRJ3_GATES[gate], args);
+      const result = await runEprj3Script(EPRJ3_GATES[gate], args, { signal: ctx.signal });
       results.push({ gate, ...scriptOut(result) });
+      await ctx.progress(index + 1, selected.length, gate);
       if (result.timedOut) break;
     }
     return { dir: project.rootDir, gates: selected, results };
@@ -315,7 +317,7 @@ export const eprj3BuildTool = defineTool({
     if (dryRun !== true) {
       requireConfirm(confirm, { script: "build.js", args });
     }
-    const result = await runEprj3Script("build", args);
+    const result = await runEprj3Script("build", args, { signal: ctx.signal });
     return { dryRun: dryRun === true, dir: targetDir, ...scriptOut(result) };
   },
 });
@@ -351,7 +353,7 @@ export const eprj3EditTool = defineTool({
       }
     }
     requireConfirm(confirm, { script: `${op}.js`, args: safeArgs });
-    const result = await runEprj3Script(op, safeArgs);
+    const result = await runEprj3Script(op, safeArgs, { signal: ctx.signal });
     return { op, ...scriptOut(result) };
   },
 });

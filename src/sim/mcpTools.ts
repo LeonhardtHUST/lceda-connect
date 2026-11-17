@@ -269,6 +269,8 @@ export const runTool = defineTool({
         project: project ?? null,
         sourceFile: deck,
         ngspiceBin: ngspiceBin ?? null,
+        signal: ctx.signal,
+        onProgress: (done, total, message) => ctx.progress(done, total, message),
       });
       return {
         ok: result.ok,
@@ -490,6 +492,7 @@ export const sidecarTool = defineTool({
         cwd: safeWorkDir,
         timeoutMs: timeoutSec ? timeoutSec * 1000 : undefined,
         env: ctx.env ?? process.env,
+        signal: ctx.signal,
       });
       return {
         script: result.script,
