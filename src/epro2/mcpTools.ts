@@ -19,12 +19,12 @@ import { ProjectError } from "./container.ts";
 import type { SchematicIr } from "./contract.ts";
 import { compare, summarize } from "./diff.ts";
 
-function projectGuard<T>(action: () => T): T {
+async function projectGuard<T>(action: () => T | Promise<T>): Promise<T> {
   try {
-    return action();
+    return await action();
   } catch (error) {
     if (error instanceof ProjectError) {
-      throw new ToolError("EPRO2_PROJECT_ERROR", error.message);
+      throw new ToolError(`EPRO2_${error.code}`, error.message);
     }
     throw error;
   }
@@ -199,10 +199,11 @@ export const reportTool = defineTool({
     outDir: z.string().min(1).describe("产物目录，不存在时自动创建；同名文件会被覆盖"),
     page: z.string().optional().describe("只解析指定页（页名或 uuid）"),
   },
-  annotations: { readOnlyHint: false, openWorldHint: false },
-  handler: ({ file, outDir, page }) =>
-    projectGuard(() => {
-      const run = runSingle(file, outDir, page ?? null);
+  annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  handler: async ({ file, outDir, page }, ctx) =>
+    projectGuard(async () => {
+      const safeOutDir = await ctx.resolveWritePath(outDir);
+      const run = runSingle(file, safeOutDir, page ?? null);
       return analyzeSummary(run);
     }),
 });
@@ -219,10 +220,10 @@ export const diffTool = defineTool({
     outDir: z.string().optional().describe("产物目录；给出时写出 diff.json 与 diff.md"),
   },
   annotations: { readOnlyHint: false, openWorldHint: false },
-  handler: ({ oldFile, newFile, outDir }) =>
-    projectGuard(() => {
+  handler: async ({ oldFile, newFile, outDir }, ctx) =>
+    projectGuard(async () => {
       if (outDir) {
-        const run = runDiff(oldFile, newFile, outDir);
+        const run = runDiff(oldFile, newFile, await ctx.resolveWritePath(outDir));
         return {
           summary: run.summary,
           files: run.files,

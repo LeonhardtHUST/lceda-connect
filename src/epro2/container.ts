@@ -6,9 +6,11 @@ import { decodeMemberName } from "./gbk.ts";
 import { ZipError, extractEntry, looksLikeZip, readZip, type ZipEntry } from "./zip.ts";
 
 export class ProjectError extends Error {
-  constructor(message: string) {
+  readonly code: string;
+  constructor(message: string, code = "PROJECT_ERROR") {
     super(message);
     this.name = "ProjectError";
+    this.code = code;
   }
 }
 
@@ -75,15 +77,16 @@ export function openProject(filePath: string): Project {
   try {
     stats = statSync(filePath);
   } catch {
-    throw new ProjectError(`文件不存在：${filePath}`);
+    throw new ProjectError(`文件不存在：${filePath}`, "FILE_NOT_FOUND");
   }
   if (stats.isDirectory()) {
     throw new ProjectError(
       "这是目录，不是 .epro2：旧版 .epro 为目录式包，请在 EDA 中另存为 .epro2",
+      "NOT_EPRO2",
     );
   }
   if (!stats.isFile()) {
-    throw new ProjectError(`这不是文件：${filePath}`);
+    throw new ProjectError(`这不是文件：${filePath}`, "NOT_EPRO2");
   }
 
   let data: Buffer;
@@ -97,9 +100,12 @@ export function openProject(filePath: string): Project {
 
   if (!looksLikeZip(data)) {
     if (data.length >= 2 && data[0] === 0x4b && data[1] === 0x50) {
-      throw new ProjectError("ZIP 文件头不完整（PK\\x03\\x04）：文件可能在下载时被截断");
+      throw new ProjectError("ZIP 文件头不完整（PK\\x03\\x04）：文件可能在下载时被截断", "BAD_ZIP");
     }
-    throw new ProjectError("文件头不是 ZIP（PK\\x03\\x04）：可能是旧版 .epro 或被截断的下载文件");
+    throw new ProjectError(
+      "文件头不是 ZIP（PK\\x03\\x04）：可能是旧版 .epro 或被截断的下载文件",
+      "NOT_EPRO2",
+    );
   }
 
   let archive;
@@ -108,12 +114,13 @@ export function openProject(filePath: string): Project {
   } catch (error) {
     if (error instanceof ZipError) {
       if (error.message.includes("ZIP64") || error.message.includes("加密")) {
-        throw new ProjectError(error.message);
+        throw new ProjectError(error.message, "BAD_ZIP");
       }
-      throw new ProjectError(`ZIP 结构损坏，无法读取目录（${error.message}）`);
+      throw new ProjectError(`ZIP 结构损坏，无法读取目录（${error.message}）`, "BAD_ZIP");
     }
     throw new ProjectError(
       `ZIP 结构损坏，无法读取目录（${error instanceof Error ? error.message : String(error)}）`,
+      "BAD_ZIP",
     );
   }
 
@@ -125,7 +132,10 @@ export function openProject(filePath: string): Project {
     }
   }
   if (!epruEntry) {
-    throw new ProjectError("ZIP 内没有 .epru 工程日志：不是嘉立创EDA专业版工程，或文件不完整");
+    throw new ProjectError(
+      "ZIP 内没有 .epru 工程日志：不是嘉立创EDA专业版工程，或文件不完整",
+      "MEMBER_MISSING",
+    );
   }
 
   try {
@@ -155,6 +165,7 @@ export function openProject(filePath: string): Project {
     throw new ProjectError(
       `ZIP 数据损坏，解压失败（${error instanceof Error ? error.message : String(error)}）：` +
         "文件可能在传输或保存时被截断，请在 EDA 里重新导出 .epro2",
+      "BAD_ZIP",
     );
   }
 }

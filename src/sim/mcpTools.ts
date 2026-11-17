@@ -40,6 +40,23 @@ function guard<T>(action: () => Promise<T> | T): Promise<T> {
       if (error instanceof SimError) {
         throw new ToolError(error.code, error.message, error.details);
       }
+      if (error instanceof Error && error.name.endsWith("Error") && "code" in error) {
+        const code = (error as Error & { code?: unknown }).code;
+        if (typeof code === "string") {
+          const prefixByName: Record<string, string> = {
+            RawParseError: "SIM_RAW_PARSE",
+            DeckError: "SIM_DECK",
+            GroundMapError: "SIM_GROUND_MAP",
+          };
+          const prefix =
+            prefixByName[error.name] ?? `SIM_${error.name.replace(/Error$/, "").toUpperCase()}`;
+          throw new ToolError(
+            `${prefix}_${code}`,
+            error.message,
+            (error as { details?: unknown }).details,
+          );
+        }
+      }
       throw error;
     }
   })();
@@ -123,19 +140,13 @@ export const netlistTool = defineTool({
     strict: z.boolean().optional().describe("拓扑可疑直接报错（UNMAPPED_IC 等）"),
     allowPartialModel: z.boolean().optional().describe("pin mapping 不完整时降级为警告"),
   },
-  annotations: { readOnlyHint: false, openWorldHint: false },
-  handler: ({
-    file,
-    ir,
-    page,
-    outDir,
-    configPath,
-    models,
-    powerPolicy,
-    strict,
-    allowPartialModel,
-  }) =>
+  annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  handler: (
+    { file, ir, page, outDir, configPath, models, powerPolicy, strict, allowPartialModel },
+    ctx,
+  ) =>
     guard(async () => {
+      const deckDir = await ctx.resolveWritePath(outDir);
       if (!file && !ir)
         throw new ToolError("SIM_INPUT_REQUIRED", "必须给 file（.epro2）或 ir（IR JSON）");
       if (file && ir) throw new ToolError("SIM_INPUT_INVALID", "file 与 ir 只能给一个");
@@ -152,7 +163,6 @@ export const netlistTool = defineTool({
         simIr = loadSimIr(ir as string);
         pageLabel = (simIr.page.name as string | undefined) ?? null;
       }
-      const deckDir = path.resolve(outDir);
       mkdirSync(deckDir, { recursive: true });
       const { text, report } = generateNetlist(simIr, buildPinNetTable(simIr), {
         config,
@@ -232,19 +242,13 @@ export const runTool = defineTool({
     project: z.string().optional().describe("工程名（manifest 用）"),
     ngspiceBin: z.string().optional().describe("指定 ngspice 可执行文件"),
   },
-  annotations: { readOnlyHint: false, openWorldHint: true },
-  handler: ({
-    deck,
-    mode,
-    args,
-    workDir,
-    timeoutSec,
-    metrics,
-    netlistReport,
-    project,
-    ngspiceBin,
-  }) =>
+  annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  handler: (
+    { deck, mode, args, workDir, timeoutSec, metrics, netlistReport, project, ngspiceBin },
+    ctx,
+  ) =>
     guard(async () => {
+      const safeWorkDir = await ctx.resolveWritePath(workDir);
       const netlist = readNetlistFile(deck);
       let report: NetlistReport | null = null;
       if (netlistReport) {
@@ -258,7 +262,7 @@ export const runTool = defineTool({
         netlist,
         mode,
         args: args ?? null,
-        workDir,
+        workDir: safeWorkDir,
         timeoutSec: timeoutSec ?? undefined,
         metrics: (metrics ?? []) as unknown as MetricSpec[],
         netlistReport: report,
@@ -313,12 +317,13 @@ export const metricsTool = defineTool({
       .describe("分析类型（决定挑实数还是复数 plot）"),
     csv: z.string().optional().describe("可选：把解析结果另存成 CSV 的路径"),
   },
-  annotations: { readOnlyHint: true, openWorldHint: false },
-  handler: ({ raw, metrics, mode, csv }) =>
-    guard(() => {
+  annotations: { readOnlyHint: false, openWorldHint: false },
+  handler: async ({ raw, metrics, mode, csv }, ctx) =>
+    guard(async () => {
+      const csvPath = csv ? await ctx.resolveWritePath(csv) : null;
       const plots = parseRawFile(raw);
       const result = computeMetrics(plots, metrics as MetricSpec[], mode ?? null);
-      if (csv) plotsToCsv(plots, csv);
+      if (csvPath) plotsToCsv(plots, csvPath);
       return {
         raw,
         csv: csv ?? null,
@@ -480,8 +485,9 @@ export const sidecarTool = defineTool({
         candidates: listSimSidecarScripts().slice(0, 50),
         note: "sidecar 脚本会读写文件并可能长时间占用 CPU；确认脚本与参数后用 confirm:true 重试。",
       });
+      const safeWorkDir = workDir ? await ctx.resolveWritePath(workDir) : process.cwd();
       const result = await runSimSidecar(script, args ?? [], {
-        cwd: workDir ?? undefined,
+        cwd: safeWorkDir,
         timeoutMs: timeoutSec ? timeoutSec * 1000 : undefined,
         env: ctx.env ?? process.env,
       });

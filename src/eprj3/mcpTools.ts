@@ -302,11 +302,11 @@ export const eprj3BuildTool = defineTool({
     confirm: z.boolean().optional().describe("写操作确认；dryRun=false 时必须为 true"),
   },
   annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-  handler: async ({ design, gen, dir, dryRun, force, confirm }) => {
+  handler: async ({ design, gen, dir, dryRun, force, confirm }, ctx) => {
     if ((design === undefined) === (gen === undefined)) {
       throw new ToolError("EPRJ3_BUILD_ARGS", "design 与 gen 必须给且只给一个");
     }
-    const targetDir = path.resolve(dir);
+    const targetDir = await ctx.resolveWritePath(dir);
     const args = ["--dir", targetDir];
     if (design !== undefined) args.push("--design", path.resolve(design));
     if (gen !== undefined) args.push("--gen", path.resolve(gen));
@@ -334,14 +334,24 @@ export const eprj3EditTool = defineTool({
     confirm: z.boolean().optional().describe("写操作确认，必须为 true"),
   },
   annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-  handler: async ({ op, args, confirm }) => {
+  handler: async ({ op, args, confirm }, ctx) => {
     if (!isEprj3EditOp(op)) {
       throw new ToolError("EPRJ3_EDIT_OP_UNKNOWN", `不支持的编辑操作 ${op}`, {
         available: EPRJ3_EDIT_OPS,
       });
     }
-    requireConfirm(confirm, { script: `${op}.js`, args: args ?? [] });
-    const result = await runEprj3Script(op, args ?? []);
+    const safeArgs = [...(args ?? [])];
+    for (let index = 0; index < safeArgs.length; index += 1) {
+      const arg = safeArgs[index]!;
+      if (arg === "--dir" && safeArgs[index + 1] !== undefined) {
+        safeArgs[index + 1] = await ctx.resolveWritePath(safeArgs[index + 1]!);
+        index += 1;
+      } else if (arg.startsWith("--dir=")) {
+        safeArgs[index] = `--dir=${await ctx.resolveWritePath(arg.slice("--dir=".length))}`;
+      }
+    }
+    requireConfirm(confirm, { script: `${op}.js`, args: safeArgs });
+    const result = await runEprj3Script(op, safeArgs);
     return { op, ...scriptOut(result) };
   },
 });

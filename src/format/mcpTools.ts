@@ -22,15 +22,8 @@ import {
  * - META 绝不能写空串载荷，删 META 用 DELETE_DOC。
  */
 
-const RULES = [
-  "同名图元在不同文档类型下 schema 不同：类型名用 `<文档类型>_<图元名>`（如 PCB_LINE）或另给 docType；裸名按 SCH_PAGE > SCH > SYMBOL > PCB > 其他 解析，跨域不可靠。",
-  "生成文档数据时 DOCHEAD 必须是第一行，顺序为 DOCHEAD → CANVAS → 其他图元；CANVAS 只存在于含画布的文档域（SCH_PAGE/SYMBOL/SIMULATION/PCB/FOOTPRINT/PANEL/PANEL_LIB）。",
-  "同一原子出现多行时 ticket 大者胜；ticket 相同再比文档头 client，字典序大者胜（不是小者胜）。",
-  '删除一条原子数据：再写一行、内层载荷置为空串（`{...}|||`），不要抹掉旧行；DELETE_DOC 的载荷必须是 {"isDelete":true} 或 {"isDelete":false}。',
-  "META 的载荷绝不能是空串（消费方取 dataObj.title 会抛异常）；删 META 用 DELETE_DOC。",
-].join("\n");
-
-const FORMAT_RULES = `硬规则：\n${RULES}`;
+const FORMAT_RULES =
+  "关键约束：DOCHEAD 必须先于 CANVAS；同一原子按 ticket 大者胜，平票比较 client；删除用空载荷追加记录，META 不可空载荷。完整规则用 skill_docs 读取 easyeda-format/SKILL.md。";
 
 export const formatListTypesTool = defineTool({
   name: "format_list_types",
@@ -38,8 +31,7 @@ export const formatListTypesTool = defineTool({
     "列出嘉立创EDA/EasyEDA Pro 文件格式的图元类型：中文名、类型名、所属文档域与 schema key。" +
     "校验或生成数据前先在这里确认类型名与文档域。" +
     "同名图元在不同文档下 schema 不同，用 `<文档类型>_<图元名>`（如 PCB_LINE）或另外给 docType。" +
-    "query 支持中文名（过孔、焊盘）、类型名（TPcbVia）与 schema key（t-pcb-via）。\n" +
-    FORMAT_RULES,
+    "query 支持中文名（过孔、焊盘）、类型名（TPcbVia）与 schema key（t-pcb-via）。\n",
   input: {
     docType: z
       .string()
@@ -62,8 +54,7 @@ export const formatGetPrimitiveTool = defineTool({
     "type 可写类型名（TPcbVia）、外层类型（VIA / PCB_VIA）、schema key（t-pcb-via）或中文名（过孔）；" +
     "跨文档类型时给 docType（如 type=LINE、docType=PCB 取走线而不是导线）。" +
     "字段表里 PCB 坐标与尺寸单位是 mil，原理图沿用 0.01 inch；不要照 schema 的 required 猜必填，" +
-    "已知 schema 与真机写盘有出入（如 VIA 的 zIndex），校验时会以 WARNING 提示。\n" +
-    FORMAT_RULES,
+    "已知 schema 与真机写盘有出入（如 VIA 的 zIndex），校验时会以 WARNING 提示。\n",
   input: {
     type: z.string().min(1).describe("类型名 / 外层类型 / schema key / 中文名"),
     docType: z.string().optional().describe("文档类型，如 PCB、SCH_PAGE、PANEL"),
@@ -100,10 +91,7 @@ function parsePayload(raw: unknown, type: string): unknown {
 export const formatValidateRecordTool = defineTool({
   name: "format_validate_record",
   description:
-    "校验一条格式数据。两种入参：line 给整行 `{外层JSON}||{内层JSON}|`（会同时校验外层 type/id/ticket）；" +
-    "或者 type + data 给内层载荷（data 可以是 JSON 字符串或对象，空串表示删除语义）。" +
-    "返回 {valid, type, schema, errors, warnings}；schema 与真实样本的已知矛盾降级为 warning，不挡 valid。" +
-    "错误路径用点号表示（如 defaultPad.padType）。docType 用于按文档域解析裸类型名。\n" +
+    "校验一条格式数据：line 给完整记录行，或 type + data 给载荷（JSON 字符串或对象，空串表示删除）。docType 用于区分文档域；返回 valid/errors/warnings，已知 schema 差异降为 warning。" +
     FORMAT_RULES,
   input: {
     line: z.string().optional().describe('整行：`{"type":"VIA","id":"...","ticket":1}||{...}`'),
