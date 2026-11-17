@@ -28,9 +28,26 @@
 
 全局安装后也可以直接写 `"command": "lceda-mcp"`。`lceda-connect mcp tools` 列出全部工具。约定：
 
-- 写操作（在编辑器里执行代码、自动布线、建工程、调用外部脚本）默认不执行，要传 `confirm: true`。
-- 单个结果超过 64 KiB 会截断，并在 `_meta` 里注明原始大小；大产物请用 `outDir` 落盘。
-- 各源仓库的 SKILL.md 与 references 以 `lceda://skills/...` resource 提供，也可用 `skill_docs` 工具读取。
+- 写操作（在编辑器里执行代码、自动布线、建工程、调用外部脚本）默认不执行，要传 `confirm: true`。`cdp_eval` 只放行能确认为只读的表达式（如 `getX` / `listX` 一类查询调用和普通 DOM 读取），其余都要 `confirm: true`；旧参数 `allowSideEffects` 作为弃用别名保留。
+- 返回对象的工具同时给出 `structuredContent`。
+- 单个结果超过 64 KiB 时，完整内容写到 `<LCEDA_CONNECT_HOME 或 ~/.lceda-connect>/results/`（保留最近 50 个），工具返回一份合法 JSON 摘要（含原始大小、预览和 `resultUri`）加一条 `resource_link`，用 `lceda://results/{id}` 读回完整内容。声明了输出 schema 的工具超限时报 `RESULT_TOO_LARGE`。大产物仍建议用 `outDir` 落盘。
+- 各源仓库的 SKILL.md 与 references 以 `lceda://skills/{+path}` 资源模板提供，也可用 `skill_docs` 工具读取。
+- 写路径只允许在客户端声明的 roots、`LCEDA_ALLOWED_ROOTS` 和默认根（当前目录、系统临时目录、connect home）之内，越界报 `PATH_NOT_ALLOWED`。读路径不受限制。
+- 支持请求取消（报 `CANCELLED`）；`sim_run`、`eprj3_gates` 等长任务会发送进度通知。
+- 工具集可裁剪：`lceda-connect mcp --toolsets offline,eda`，或设置 `LCEDA_TOOLSETS`。可选 `core` / `offline` / `live`，以及 `cdp`、`bridge`、`eda`、`api`、`format`、`epro2`、`eprj3`、`sim`；`core` 总是保留。
+
+## 安全模型
+
+bridge 能在编辑器里执行任意 `eda.*` 代码，所以默认只信任本机上拿到 token 的调用方：
+
+- 只接受回环 Host（`127.0.0.1`、`localhost`、`[::1]`），其他 Host 返回 421。
+- agent 端（`/execute`、`/eda-windows`、`/eda-windows/select`，以及 `/eda` 以外的 WebSocket）带 `Origin` 的请求默认返回 403，浏览器页面因此不能直接调用。确需放行的来源写进 `LCEDA_BRIDGE_ALLOWED_ORIGINS`（逗号分隔）。`/eda` 是扩展端，沿用原来较宽松的 Origin 策略，已装的扩展不用改。
+- agent 端还要带请求头 `X-Lceda-Bridge-Token`（WebSocket 也可用 `?token=`），缺失或不对返回 401。服务启动时生成 token，写到 `LCEDA_BRIDGE_RUNTIME`（默认 `%LOCALAPPDATA%\lceda-bridge`）下的 `token-<端口>.txt`；也可以用 `LCEDA_BRIDGE_TOKEN` 指定。`/health` 不需要 token。
+- 本工具的 CLI 和 MCP 客户端会自动读取 token 文件；token 无效时报 `BRIDGE_UNAUTHORIZED`。
+- 旧的外部脚本（比如直接 POST `/execute` 的 Python）要么带上 token，要么在启动 bridge 的环境里设 `LCEDA_BRIDGE_AUTH=off` 关闭校验。关闭后仍保留 Host 与 Origin 检查。
+- 上限：请求体 4 MiB，`code` 1 MiB（超出返回 413），WebSocket 单帧 16 MiB，待决请求 64 个（满了返回 503）。
+- MCP 的写路径限制见上一节。`LCEDA_ALLOWED_ROOTS=*` 可关闭限制。
+- 子进程超时或被取消时会清理整棵进程树，每路输出上限 8 MiB。Python 自动探测会跳过 `.bat` / `.cmd` 壳；显式指定批处理文件时，含 shell 元字符的参数会被拒绝。
 
 ## 安装
 
@@ -159,6 +176,16 @@ lceda-connect sim run deck.cir --mode tran --out ./sim-out
 | `LCEDA_PYTHON`         | sidecar 使用的 Python       | 自动探测                                   |
 | `LCEDA_CONNECT_ASSETS` | 覆盖 assets 目录            | 包内 `assets/`                             |
 
+bridge 与 MCP 的安全相关变量（详见「安全模型」）：
+
+| 变量                           | 作用                                                     | 默认值                          |
+| ------------------------------ | -------------------------------------------------------- | ------------------------------- |
+| `LCEDA_BRIDGE_TOKEN`           | 指定 agent 端 token                                      | 启动时随机生成                  |
+| `LCEDA_BRIDGE_AUTH`            | 设为 `off` 关闭 token 校验                               | 开启校验                        |
+| `LCEDA_BRIDGE_ALLOWED_ORIGINS` | 放行的 agent 端 Origin，逗号分隔                         | 空（带 Origin 一律拒绝）        |
+| `LCEDA_ALLOWED_ROOTS`          | MCP 额外允许写入的根目录，按系统路径分隔符分隔；`*` 不限 | 空（只用客户端 roots 与默认根） |
+| `LCEDA_TOOLSETS`               | MCP 工具集，等价 `mcp --toolsets`                        | 全部                            |
+
 优先级：命令行参数 > 环境变量 > 内置默认值。
 
 ## 从旧脚本迁移
@@ -200,6 +227,8 @@ vp build          # 打包（vp pack，产物在 dist/）
 vp test           # 单元测试
 vp check          # 格式化 + lint + 类型检查
 ```
+
+CI（GitHub Actions）在 Windows / Linux × Node 22、24 上跑 check、test、pack 和包体积门禁，另在 Node 20.11 上运行构建产物，并单独用一个 job 跑真实 ngspice。
 
 目录结构：
 
