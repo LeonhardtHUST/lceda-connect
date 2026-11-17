@@ -36,7 +36,7 @@ import type {
 export type SimDeckRunner = (
   bin: string,
   deckPath: string,
-  options: { cwd?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv },
+  options: { cwd?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv; signal?: AbortSignal },
 ) => Promise<RunResult>;
 
 export interface RunSimulationOptions {
@@ -57,6 +57,8 @@ export interface RunSimulationOptions {
   env?: NodeJS.ProcessEnv;
   /** 测试注入：默认走 ngspice -b。 */
   runner?: SimDeckRunner;
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number, message: string) => void | Promise<void>;
 }
 
 export interface RunSimulationResult {
@@ -84,6 +86,8 @@ function hashText(text: string): string {
  * ngspice 返回非零只记在结果里（"跑过了但失败"与"没跑"要能区分）。
  */
 export async function runSimulation(options: RunSimulationOptions): Promise<RunSimulationResult> {
+  const progress = options.onProgress;
+  await progress?.(0, 4, "写 deck");
   const env = options.env ?? process.env;
   const workDir = path.resolve(options.workDir);
   mkdirSync(workDir, { recursive: true });
@@ -115,11 +119,14 @@ export async function runSimulation(options: RunSimulationOptions): Promise<RunS
     cwd: workDir,
     timeoutMs: options.timeoutSec ? options.timeoutSec * 1000 : NGSPICE_RUN_TIMEOUT_MS,
     env,
+    signal: options.signal,
   });
+  await progress?.(2, 4, "运行 ngspice");
   writeFileSync(path.join(workDir, "stdout.txt"), runResult.stdout, "utf8");
   writeFileSync(path.join(workDir, "stderr.txt"), runResult.stderr, "utf8");
 
   const raws: SimRawFile[] = [];
+  await progress?.(3, 4, "解析 raw");
   const rawErrors: string[] = [];
   const plots = [];
   for (const name of readdirSync(workDir).sort()) {
@@ -148,6 +155,7 @@ export async function runSimulation(options: RunSimulationOptions): Promise<RunS
   }
 
   const metricSpecs = options.metrics ?? [];
+  await progress?.(4, 4, "计算指标");
   const metricResult = computeMetrics(plots, metricSpecs, options.mode);
   const metricsPath =
     Object.keys(metricResult.metrics).length > 0 ? path.join(workDir, "metrics.json") : null;

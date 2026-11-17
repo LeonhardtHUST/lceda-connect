@@ -53,7 +53,14 @@ export function pythonCandidates(env: NodeJS.ProcessEnv = process.env): PythonCa
   if (env.LCEDA_PYTHON) candidates.push({ command: env.LCEDA_PYTHON, prefix: [] });
   candidates.push({ command: "python", prefix: [] });
   candidates.push({ command: "py", prefix: ["-3"] });
-  return candidates;
+  return candidates.filter((candidate) => {
+    if (
+      !candidate.command.toLowerCase().endsWith(".bat") &&
+      !candidate.command.toLowerCase().endsWith(".cmd")
+    )
+      return true;
+    return Boolean(env.LCEDA_PYTHON && candidate.command === env.LCEDA_PYTHON);
+  });
 }
 
 function parseVersion(text: string): string | null {
@@ -78,7 +85,7 @@ export async function probePython(
       ...candidate,
       ok,
       version,
-      error: result.error ?? (ok ? undefined : result.stderr.trim().slice(0, 200)),
+      error: result.error ?? (ok ? undefined : result.stderr.trim().slice(0, 2000)),
     });
     if (ok) {
       return {
@@ -101,7 +108,7 @@ export async function probePython(
     candidates: probes,
     hint:
       "没有找到 Python。安装 Python 3 后设置 LCEDA_PYTHON（指向 python.exe），" +
-      "或把 python 放进 PATH。RF/拟合类 sidecar 还需要 pip install -r requirements-rf.txt。",
+      "或把 python 放进 PATH。若候选是批处理壳，请把 LCEDA_PYTHON 指向 python.exe。RF/拟合类 sidecar 还需要 pip install -r requirements-rf.txt。",
   };
 }
 
@@ -140,6 +147,8 @@ export interface RunSimSidecarOptions {
   cwd?: string;
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number, message: string) => void | Promise<void>;
 }
 
 export interface SimSidecarResult {
@@ -178,11 +187,23 @@ export async function runSimSidecar(
     command = probe.command;
     prefix = probe.prefix;
   }
-  const argv = [...prefix, scriptPath, ...args.map((arg) => String(arg))];
-  const result = await run(command, argv, {
+  const isBatch = process.platform === "win32" && /\.(?:bat|cmd)$/i.test(command);
+  const allArgs = [...prefix, scriptPath, ...args.map((arg) => String(arg))];
+  if (isBatch) {
+    const unsafe = /["&|<>^%!\r\n]/;
+    if (allArgs.some((arg) => unsafe.test(arg))) {
+      throw new ToolError("UNSAFE_ARGUMENT", "批处理解释器参数包含不安全字符");
+    }
+  }
+  const argv = isBatch
+    ? ["/d", "/s", "/c", `"${[command, ...allArgs].map((arg) => `"${arg}"`).join(" ")}"`]
+    : allArgs;
+  const result = await run(isBatch ? "cmd.exe" : command, argv, {
     cwd: options.cwd ?? process.cwd(),
     timeoutMs: options.timeoutMs ?? SIDECAR_TIMEOUT_MS,
     env,
+    signal: options.signal,
+    windowsVerbatimArguments: isBatch,
   });
   if (result.error && /ENOENT|EACCES/i.test(result.error)) {
     throw new ToolError("PY_SIDECAR_UNAVAILABLE", `找不到 Python 解释器: ${command}`, {

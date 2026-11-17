@@ -209,6 +209,8 @@ export interface RunNgspiceOptions {
   cwd?: string;
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number, message: string) => void | Promise<void>;
 }
 
 /**
@@ -225,6 +227,7 @@ export async function runNgspiceBatch(
     cwd,
     timeoutMs: options.timeoutMs ?? NGSPICE_RUN_TIMEOUT_MS,
     env: options.env,
+    signal: options.signal,
   });
   if (result.error && /ENOENT|EACCES/i.test(result.error)) {
     throw new NgspiceError(

@@ -32,6 +32,32 @@ function tempDir(): { dir: string; cleanup: () => void } {
 
 const RC_NETLIST = "* RC demo\nV1 in 0 DC 1\nR1 in out 1k\nC1 out 0 1u\n.end\n";
 
+test("runSimulation forwards progress stages and signal to runner", async () => {
+  const temp = tempDir();
+  const controller = new AbortController();
+  const stages: string[] = [];
+  try {
+    const result = await runSimulation({
+      netlist: RC_NETLIST,
+      mode: "op",
+      workDir: temp.dir,
+      signal: controller.signal,
+      onProgress: (_done, _total, message) => {
+        stages.push(message);
+      },
+      runner: async (_bin, _deck, options) => {
+        expect(options.signal).toBe(controller.signal);
+        controller.abort();
+        return { code: 0, stdout: "", stderr: "", timedOut: false };
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(stages).toEqual(["写 deck", "运行 ngspice", "解析 raw", "计算指标"]);
+  } finally {
+    temp.cleanup();
+  }
+});
+
 test("deck 里已经有 .control 时按现成 deck 跑，不重复注入", async () => {
   const deck = buildDeck(RC_NETLIST, "tran", "10p 600n");
   expect(deck.split(".control").length - 1).toBe(1);

@@ -173,6 +173,8 @@ export interface RunEprj3ScriptOptions {
   cwd?: string;
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number, message: string) => void | Promise<void>;
 }
 
 /** sidecar 默认超时：建工程 / 跑门禁在几十 MB 的工程上也要给足。 */
@@ -207,6 +209,7 @@ export async function runEprj3Script(
     cwd: options.cwd ?? process.cwd(),
     timeoutMs: options.timeoutMs ?? EPRJ3_SIDECAR_TIMEOUT_MS,
     env,
+    signal: options.signal,
   });
   if (result.error !== undefined) {
     throw new ToolError("EPRJ3_SCRIPT_SPAWN_FAILED", `启动 sidecar 脚本失败：${result.error}`, {
