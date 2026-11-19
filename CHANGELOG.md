@@ -2,7 +2,11 @@
 
 本项目较重要的变更都记在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号按 [语义化版本](https://semver.org/lang/zh-CN/) 走。
 
-## [Unreleased]
+## [0.1.1] - 2026-11-19
+
+- 更新 npm 安装说明和公开源码链接。此补丁不改运行时代码，用于验证 GitHub Actions 的 npm Trusted Publishing。
+
+## npm 首发与合并版本更新
 
 ### 破坏性变化
 
@@ -33,7 +37,7 @@
 - Python 自动探测跳过 `.bat` / `.cmd` 壳；显式指定批处理解释器时，含 shell 元字符的参数会被拒绝。
 - 默认 npm 包的分发范围：不包含 `assets/api-docs/`（含检索索引）和 `assets/skills/easyeda-api/` 原文；官方 CLI 文档副本（`docs/vendor/`）本来就不随包发布。只装包时离线 API 文档检索需要 `LCEDA_CONNECT_ASSETS` 指向自备资产，格式校验不受影响。
 - 更新第三方致谢与许可说明：easyeda-api-skill 快照 `002a39d` 没有独立 LICENSE，只有 `SKILL.md` 的 front matter 声明 MIT，不推广到全仓素材与脚本；内置 Bridge 服务的移植实现许可范围仍待核对。
-- 候选包尚未发布到 npm；版本号与发布 workflow 就绪不代表已经发布，实际状态以 registry 记录为准。
+- 首个 npm 发行版为 [`0.1.0`](https://www.npmjs.com/package/lceda-connect/v/0.1.0)，于 2026-11-19 发布。
 
 ### 安全
 

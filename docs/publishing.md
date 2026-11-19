@@ -7,8 +7,7 @@
 - npm tarball 不含 `assets/api-docs/`（包括检索索引）、`assets/skills/easyeda-api/` 和 `docs/vendor/easyeda-client-cli/` 的文档副本。打包后核对清单，确认 `assets/format/` 等运行时资产仍在包内。
 - 内置 Bridge 服务的移植来源见 [CREDITS.md](../CREDITS.md)。上游快照 `002a39d` 没有独立 LICENSE，`SKILL.md` 声明 MIT，脚本的许可范围尚未核实。分发时按[第三方许可说明](../THIRD_PARTY_NOTICES.md)区分来源致谢和授权。
 - 从干净、已审查的 Git 提交构建。用 `vX.Y.Z` 标签固定该提交，在公开仓库提供该版本的 GPL 对应源码和构建文件。发包前确认未登录的用户也能下载该标签的源码归档；不要只链接会继续变化的 `master` 分支。
-- 候选包尚未发布到 npm。版本号、发布 workflow 和本文档就绪都不等于已经发布，实际状态以 registry 记录为准。
-- 首发候选可以保留当前的 `0.1.0`。发行时再整理 [CHANGELOG](../CHANGELOG.md) 的待发布条目并记录实际发布日期。
+- 首个 npm 发行版为 [`0.1.0`](https://www.npmjs.com/package/lceda-connect/v/0.1.0)，对应 [GitHub 源码标签](https://github.com/LeonhardtHUST/lceda-connect/tree/v0.1.0)。以下以该版本为例，打包其他版本时替换文件名。
 
 在支持开发工具链的 Node.js 上执行：
 

@@ -1,6 +1,6 @@
 # lceda-connect
 
-嘉立创EDA专业版（EasyEDA Pro）的 MCP 服务与命令行工具。npm 包提供本机 stdio 入口，发布后可用 `npx` 启动。它由 9 个仓库合并而来（外部项目致谢见 [CREDITS.md](CREDITS.md)，合并方案见 [docs/merge-plan.md](docs/merge-plan.md)）。
+嘉立创EDA专业版（EasyEDA Pro）的 MCP 服务与命令行工具。[npm 包](https://www.npmjs.com/package/lceda-connect)提供本机 stdio 入口，可用 `npx` 启动。它由 9 个仓库合并而来（外部项目致谢见 [CREDITS.md](CREDITS.md)，合并方案见 [docs/merge-plan.md](docs/merge-plan.md)）。
 
 | 命令组   | 做什么                                                                                              |
 | -------- | --------------------------------------------------------------------------------------------------- |
@@ -18,7 +18,7 @@
 
 ### 1. 验证 npx 与 stdio MCP
 
-使用 Node.js 20.11 或更新版本。工具清单和离线功能不需要启动 EDA。包发布到 npm 后，直接运行：
+使用 Node.js 20.11 或更新版本。工具清单和离线功能不需要启动 EDA。从 npm 直接运行：
 
 ```bash
 npx -y lceda-connect mcp tools
@@ -32,7 +32,7 @@ npx -y lceda-connect mcp
 
 stdout 只用于 MCP JSON-RPC，启动日志写入 stderr。终端等待输入是正常的；配置客户端时不必另开终端常驻。首次试用建议加上 `--toolsets offline`，先调用 `lceda_info` 验证连接；需要编辑器工具时改用 `--toolsets live` 或移除此参数。`offline` 仍包含本地写盘和仿真工具，不是沙箱。
 
-包还没有发布时，从仓库构建需要 Node.js 22.18+（22.x）、24.11+（24.x）或 26+ 及 pnpm：
+若要从源码构建，需要 Node.js 22.18+（22.x）、24.11+（24.x）或 26+ 及 pnpm：
 
 ```bash
 pnpm install --frozen-lockfile
@@ -154,7 +154,7 @@ bridge 能在编辑器里执行任意 `eda.*` 代码，所以默认只信任本�
 
 ## 命令行安装
 
-包发布后，无需全局安装也能运行命令：
+无需全局安装也能运行命令：
 
 ```bash
 npx lceda-connect cdp start
