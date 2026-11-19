@@ -20,6 +20,7 @@ export const CDP_START_WAIT_MS = 60_000;
 export interface CdpConfig {
   exePath: string;
   port: number;
+  /** CLI 探测端点的回环地址，不控制客户端的监听地址。 */
   bindHost: string;
   runtimeDir: string;
   pidFile: string;

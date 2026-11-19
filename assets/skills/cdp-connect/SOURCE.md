@@ -6,9 +6,11 @@
 - 提交：`9720f0802793d4e79aebd5374565419b8f1057e1`
 - 归属：自有内容在本项目中统一采用 GPL-3.0-only，不作为外部致谢，不另设源仓库旧许可约束。这里仅记录技术来源与移植映射。
 
-## 原样收进 assets 的文件
+## 收进 assets 的文件
 
-根目录 `SKILL.md` 与 `references/` 下全部 17 个文件（16 篇 Markdown 加 `menu-catalog.json`）从源仓库原样复制，没有改内容。源仓库的 `notes/`、`docs/`、`tests/`、`tools/`、`scripts/`、`out/` 不在本目录内。
+根目录 `SKILL.md` 与 `references/` 下全部 17 个文件（16 篇 Markdown 加 `menu-catalog.json`）最初从源仓库原样复制。源仓库的 `notes/`、`docs/`、`tests/`、`tools/`、`scripts/`、`out/` 不在本目录内。
+
+本地为兼容嘉立创 EDA 4.1.105 调整了 `SKILL.md`、`references/setup-guide.md` 和 `references/restart-and-relaunch.md` 中的 CDP 启动说明：移除地址参数，对齐本仓库的 CLI 传参，并区分端点探测与系统监听表核验。上方提交仍是原始来源。
 
 `references/api-contract.md` 的 §3.4（求值上下文）、§3.5（文档切换）、§6.9（编辑器状态与模态框句柄）是 `src/cdp/eval.ts`、`src/cdp/docs.ts`、`src/cdp/board.ts` 的语义依据，文档保留原文以便回溯。
 

@@ -51,9 +51,9 @@
 
 推论，直接决定启动脚本怎么排参数：
 
-- **`--remote-debugging-port` 必须排在第一个。** 排第一，清理缓存那条通道也能把端口带过去；排在后面就丢了。`assets/launcher/lceda-cdp.ps1.tmpl` 里参数数组的第一位就是它，**不要重排**。
-- `--remote-debugging-address` 在清理缓存通道里会丢。无害：Chromium 的默认绑地址就是 `127.0.0.1`，而且本 skill 只允许绑回环。
-- `-ProxyServer` 显式指定的代理在清理缓存通道里也会丢。重启后客户端回到「按系统代理走」，与脚本默认行为一致。
+- **`--remote-debugging-port` 必须排在第一个。** 排第一，清理缓存那条通道也能把端口带过去；排在后面就丢了。`lceda-connect cdp start` 按这个顺序传参。
+- 不要传 `--remote-debugging-address`：部分客户端版本不识别它。实际监听地址由 Chromium 决定，启动后要在系统监听表确认只监听回环。
+- 用 `--proxy-server` 显式指定的代理参数在清理缓存通道里会丢。重启后客户端回到「按系统代理走」，与 CLI 默认行为一致。
 - **升级安装后参数全丢。** 升级完必须重新 `start`，`ensure` 也会如实报「进程在跑但没带端口」。
 
 关于「Electron 默认 `args = process.argv.slice(1)`」这一句：它是 Electron `app.relaunch()` 的文档语义，属于**静态依据**，本文没有在真机上逐条复跑。要自己验证，按第六节做一次改运行模式的重启，重启后看 `status` 里还有没有端口与 pid 变化。

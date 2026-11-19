@@ -1,12 +1,14 @@
 # easyeda-connect 编排层来源
 
-本目录收录 `leonskill-easyeda-connect` 的知识文档与台账，文件内容原样保留：
+本目录收录 `leonskill-easyeda-connect` 的知识文档与台账，初次收录时原样保留：
 
 - 源仓库：<https://github.com/LeonhardtHUST/leonskill-easyeda-connect>
 - 提交：`9b2593061adef44c60c869b94666c19c59b52bd5`（`git -C <源仓库> rev-parse HEAD`）
 - 归属：自有内容在本项目中统一采用 GPL-3.0-only，不作为外部致谢，不另设源仓库旧许可约束。这里仅记录技术来源与移植映射。
 - 初次合并时源仓库存在未提交改动，涉及 bridge、窗口池和内部验收脚本；收录的文档与台账没有改动。2026-11-17 后续核查以本地工作树为准，相关源码已分组提交，当前源码 HEAD 为 `e025a54`。
 - `scripts/bridge_client.py` 的实时错误分类已同步到 `src/bridge/client.ts`：只有明确的 `ECONNREFUSED` 视为没有服务；连接重置、不可达、名称解析失败保留为未确认的协议/传输错误，超时单独报告。窗口池、身份绑定和 fixture 台账仍按下方边界保留在源仓库，不声称已移植。
+
+本地为兼容嘉立创 EDA 4.1.105 调整了 `references/setup-guide.md` 的 CDP 启动参数和回环监听核验说明。上方提交仍是原始来源。
 
 ## 收录文件
 

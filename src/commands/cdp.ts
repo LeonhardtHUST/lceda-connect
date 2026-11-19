@@ -250,13 +250,11 @@ export function clearProxyEnvironment(env: NodeJS.ProcessEnv): string[] {
 // ─── 启动参数 ────────────────────────────────────────────────────────
 
 /**
- * 拼启动参数。**顺序不可重排**：客户端内部有两条自重启路径，其中「清理缓存」那条
- * 只把 process.argv[1] 传给新进程（app.js: spawn(process.argv[0], [process.argv[1], ...])）。
- * 端口放第一位，自重启后才还能带上调试端口；绑地址与代理参数会被丢掉——绑地址默认
- * 就是 127.0.0.1，代理参数只在显式指定 --proxy-server 时有差异。
+ * 调试端口放在第一位，兼容只透传 process.argv[1] 的客户端重启路径。
+ * 为兼容不识别 --remote-debugging-address 的客户端，监听地址交由 Chromium 默认处理。
  */
-export function buildStartArgs(port: number, bindHost: string, proxyServer?: string): string[] {
-  const args = [`--remote-debugging-port=${port}`, `--remote-debugging-address=${bindHost}`];
+export function buildStartArgs(port: number, proxyServer?: string): string[] {
+  const args = [`--remote-debugging-port=${port}`];
   if (proxyServer) {
     // 显式代理优先：绕开「系统代理尚未生效」的启动窗口期。
     args.push(`--proxy-server=${proxyServer}`);
@@ -540,7 +538,7 @@ async function runStart(
     }
   }
 
-  const startArgs = buildStartArgs(cfg.cdp.port, cfg.cdp.bindHost, options.proxyServer);
+  const startArgs = buildStartArgs(cfg.cdp.port, options.proxyServer);
 
   let ready = await probeNetReady();
   if (!ready && options.waitOnlineSec > 0) {

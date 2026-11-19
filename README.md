@@ -208,7 +208,8 @@ lceda-bridge stop
 
 `start` 的行为细节：
 
-- 启动参数顺序固定为 `--remote-debugging-port` → `--remote-debugging-address` → `--proxy-server`。客户端「清理缓存」自重启只透传 `process.argv[1]`，端口必须待在第一位才能活过重启。
+- `--remote-debugging-port` 放在首位，以兼容只透传首个参数的客户端自重启。为兼容不识别 `--remote-debugging-address` 的客户端（如嘉立创 EDA 4.1.105），CLI 不传该参数；显式指定的 `--proxy-server` 仍排在端口之后。
+- CLI 通过 `127.0.0.1` 探测端点，客户端的实际监听地址由 Chromium 决定。端点能连通不代表它只监听回环；请用系统监听表检查该端口的全部监听地址。若有非回环监听，请停止本次调试会话，不要做端口转发。
 - 默认清掉继承来的 `http_proxy` / `https_proxy` / `all_proxy` / `ftp_proxy` / `no_proxy`，让客户端回到「按 Windows 系统代理走」这一条可解释路径（否则会去连某个终端专用的沙箱代理，表现为白屏 30~80 秒）。要保留就加 `--keep-proxy-env`。
 - 启动前先探 `pro.lceda.cn`：网络没通会警告，`--wait-online N` 可以等最多 N 秒。
 - 客户端是单实例的：已有实例时新启动的参数会被转交并丢弃，因此默认拒绝，确需并行要 `--force`（两个实例会争抢同一份数据）。

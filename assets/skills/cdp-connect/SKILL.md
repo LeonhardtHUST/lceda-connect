@@ -87,31 +87,25 @@ python scripts/check_environment.py --json
 
 ### 启动命令
 
-Windows（已实测）：
+Windows：
 
 ```powershell
-& "<安装目录>\lceda-pro.exe" --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1
+& "<安装目录>\lceda-pro.exe" --remote-debugging-port=9222
 ```
 
 macOS / Linux（同源机制，未实测）：
 
 ```bash
-"<安装目录>/lceda-pro" --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1
+"<安装目录>/lceda-pro" --remote-debugging-port=9222
 ```
 
-- `--remote-debugging-address` 必须写 `127.0.0.1`。永远不要用 `0.0.0.0`，也不要做端口转发或内网穿透。
+- 不要附加 `--remote-debugging-address`，部分客户端版本（如嘉立创 EDA 4.1.105）不识别它。实际监听地址由 Chromium 决定。不要做端口转发或内网穿透。
 - 端口被占用时换一个，或 `--remote-debugging-port=0` 让 Chromium 自选。
 - 不要设 `--user-data-dir`，客户端会用 `app.setPath` 覆盖它，白设。
 
 ### 成功的判据
 
-启动后 stderr 出现这一行才算成功：
-
-```text
-DevTools listening on ws://127.0.0.1:<port>/devtools/browser/<uuid>
-```
-
-没有这一行就是没开成，回「故障排查」。
+先在系统监听表确认调试端口属于刚启动的客户端，且全部监听地址都是回环（例如 `127.0.0.1` 或 `::1`）。发现 `0.0.0.0`、`::` 或其他非回环地址时，停止本次调试会话。再用 `lceda-connect cdp endpoint --port 9222` 确认端点可用；若改用了其他端口，请同时替换命令中的端口。
 
 ## 第二步：发现端点与看清结构
 

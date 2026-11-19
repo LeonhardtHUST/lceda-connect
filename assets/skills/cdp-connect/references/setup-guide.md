@@ -77,7 +77,7 @@
 - 用途：真正承载调试能力的本地 HTTP + WebSocket 服务，由客户端启动时开启。
 - 下载地址：不需要——这不是要安装的东西，是客户端进程内建的服务。
 - 登录 / 凭据：不需要。
-- 权限：仅回环，`127.0.0.1`，禁止 `0.0.0.0`、端口转发、内网穿透。
+- 安全要求：只接受回环监听（例如 `127.0.0.1` 或 `::1`）。禁止非回环监听、端口转发和内网穿透。
 
 ### 配置步骤
 
@@ -85,11 +85,11 @@
 2. 带参数启动：
 
    ```powershell
-   & "<安装目录>\lceda-pro.exe" --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1
+   & "<安装目录>\lceda-pro.exe" --remote-debugging-port=9222
    ```
 
-3. 观察 stderr 是否出现 `DevTools listening on ws://127.0.0.1:<port>/devtools/browser/<uuid>`。
-4. 运行 `python scripts/lceda_cdp.py discover` 确认端点与 uuid 归属。
+3. 不要附加部分客户端版本不识别的 `--remote-debugging-address`。用系统监听表（Windows 可用 `Get-NetTCPConnection -LocalPort 9222 -State Listen`）核对进程归属，并确认该端口没有非回环监听；有则停止该调试会话。
+4. 用 `lceda-connect cdp endpoint --port 9222` 检查端点是否可用。连通性检查不能替代第 3 步。
 
 不想每次手敲参数时，用 `python scripts/render_launcher.py --out-dir <目录>` 生成启停脚本，之后 `start` / `status` / `endpoint` / `stop` 四条命令搞定。脚本要由用户在自己的终端执行，详见 `launcher.md`。
 
@@ -105,11 +105,7 @@
 
 ### 验证方式
 
-```bash
-python scripts/lceda_cdp.py discover --json
-```
-
-`found` 为真即通过；判定依据是 `/json/version` 同时返回 `Browser` 与 `Protocol-Version`。
+系统监听表和 `cdp endpoint` 都通过，才算调试端口可用并满足回环要求。若使用动态端口，先从 `DevToolsActivePort` 确定端口，再核对监听进程。
 
 ### 撤销
 

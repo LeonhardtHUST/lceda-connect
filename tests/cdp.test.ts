@@ -176,20 +176,15 @@ test("clearProxyEnvironment 在没有代理变量时返回空数组", () => {
 
 // ─── 启动参数顺序 ──────────────────────────────────────────────────
 
-test("buildStartArgs 端口必须第一位，绑地址第二，代理最后", () => {
-  expect(buildStartArgs(9222, "127.0.0.1")).toEqual([
+test("buildStartArgs 不传监听地址参数，支持固定和动态端口", () => {
+  expect(buildStartArgs(9222)).toEqual(["--remote-debugging-port=9222"]);
+  expect(buildStartArgs(0, "")).toEqual(["--remote-debugging-port=0"]);
+});
+
+test("buildStartArgs 显式代理始终在端口参数之后", () => {
+  expect(buildStartArgs(9222, "http://127.0.0.1:7897")).toEqual([
     "--remote-debugging-port=9222",
-    "--remote-debugging-address=127.0.0.1",
-  ]);
-  expect(buildStartArgs(9222, "127.0.0.1", "http://127.0.0.1:7897")).toEqual([
-    "--remote-debugging-port=9222",
-    "--remote-debugging-address=127.0.0.1",
     "--proxy-server=http://127.0.0.1:7897",
-  ]);
-  // 显式空串等于没给
-  expect(buildStartArgs(0, "127.0.0.1", "")).toEqual([
-    "--remote-debugging-port=0",
-    "--remote-debugging-address=127.0.0.1",
   ]);
 });
 
@@ -212,10 +207,7 @@ test("mainInstancePids 认不出主进程时退回全部 pid，空列表返回�
 
 test("debugFlagRows 只统计带 --remote-debugging-port 的主实例", () => {
   const processes = [
-    proc(
-      300,
-      '"D:\\lceda-pro\\lceda-pro.exe" --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1',
-    ),
+    proc(300, '"D:\\lceda-pro\\lceda-pro.exe" --remote-debugging-port=9222'),
     // 子进程即便带了端口也不算主实例
     proc(301, '"D:\\lceda-pro\\lceda-pro.exe" --type=renderer --remote-debugging-port=9222'),
     // 没带调试参数（图标启动 / 自重启丢参）
