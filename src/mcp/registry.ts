@@ -1,4 +1,4 @@
-import { apiDocsTools } from "../apidocs/mcpTools.ts";
+import { apiDocsTools, availableApiDocsTools } from "../apidocs/mcpTools.ts";
 import { bridgeTools } from "../bridge/mcpTools.ts";
 import { cdpTools } from "../cdp/mcpTools.ts";
 import { edaTools } from "../eda/mcpTools.ts";
@@ -101,6 +101,15 @@ export function allTools(selection?: ToolsetSelection): ToolDef[] {
     seen.add(tool.name);
   }
   return tools;
+}
+
+/** 实际入口按同一环境过滤可选资料；不改变纯 allTools() 的公开语义。 */
+export function toolsForEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  selection?: ToolsetSelection,
+): ToolDef[] {
+  const apiNames = new Set(availableApiDocsTools(env).map((tool) => tool.name));
+  return allTools(selection).filter((tool) => tool.toolset !== "api" || apiNames.has(tool.name));
 }
 
 /** 将工具列表汇总为 lceda_info 可展示的 toolset 信息。 */

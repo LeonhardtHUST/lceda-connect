@@ -18,4 +18,21 @@
 
 ## 尚待核实的外部材料
 
-EasyEDA 官方 API skill 与官方客户端 CLI 文档的当前收录版本没有附带 LICENSE 文件。已有许可声明和来源事实分别保留在 [API 来源](assets/api-docs/SOURCE.md) 与 [CLI 文档来源](docs/vendor/easyeda-client-cli/SOURCE.md)；对这些实际第三方材料，公开分发前仍需核实上游授权。本项目的 GPL 选择不替代上游许可。
+### easyeda-api-skill
+
+- 上游：<https://github.com/easyeda/easyeda-api-skill>，收录快照 `002a39d6dc55ad138e784c788b5c220b5c191c70`。
+- 该快照没有独立 LICENSE 文件，只有 `SKILL.md` 的 front matter 声明 `license: MIT`。这条声明只针对该文件，不足以说明整个上游仓库的文档、素材和脚本都按 MIT 授权。
+- 本项目的内置 Bridge 服务（`src/bridge/`）由上游 `scripts/bridge-server.mjs` 移植而来，移植实现的许可范围仍需核对，不按独立实现处理。
+- 上游的 API 参考、格式文档与 `SKILL.md` 原文留在源码树 `assets/api-docs/` 和 `assets/skills/easyeda-api/`，默认 npm 包不收录这两处及检索索引。来源与收录范围见 [API 来源](assets/api-docs/SOURCE.md) 和 [技能来源](assets/skills/easyeda-api/SOURCE.md)。公开分发前需要确认这些材料本身的授权；无法确认时保持排除。
+- 本机需要这些文档时，可把 `LCEDA_CONNECT_ASSETS` 指向自备的同结构 assets 目录。该变量只改变运行时的读取位置，不改变许可状态。
+
+### easyeda-client-cli
+
+- 上游：<https://github.com/easyeda/easyeda-client-cli>，收录快照 `5452c638`。仓库 README 声称 Apache-2.0，但仓库内没有 LICENSE 文件。
+- 这些文档只作官方工具参考保存在 `docs/vendor/easyeda-client-cli/`，不随 npm 包发布，来源见 [CLI 文档来源](docs/vendor/easyeda-client-cli/SOURCE.md)，引用前仍需核实授权。
+
+### 发布边界
+
+- 本项目采用 GPL-3.0-only。GPL 不能替代上游授权，也不会自动取得上述材料的再许可权。
+- 按 GPL 发布时，下载者要能取得该版本的对应源码。只给私有仓库地址不够，发布前要确保他们能取得该版本对应的源码。
+- 默认 npm 包不含 `assets/api-docs/`、`assets/skills/easyeda-api/` 和官方 CLI 文档副本；`assets/format/` 等随包资产不受影响。候选包尚未发布到 npm，实际状态以 registry 记录为准。

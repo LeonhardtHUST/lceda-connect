@@ -1,7 +1,14 @@
 import { z } from "zod";
 
 import { ToolError, defineTool, type ToolDef } from "../mcp/types.ts";
-import { getEntry, getFormatDoc, loadApiIndex, search, type ApiEntryKind } from "./index.ts";
+import {
+  apiDocsAvailable,
+  getEntry,
+  getFormatDoc,
+  loadApiIndex,
+  search,
+  type ApiEntryKind,
+} from "./index.ts";
 
 /**
  * API 文档检索工具：查 EasyEDA Pro 扩展 API 的类、成员签名，以及文件源格式说明。
@@ -79,6 +86,11 @@ export const apiFormatDocTool = defineTool({
 });
 
 export const apiDocsTools: ToolDef[] = [apiSearchTool, apiGetTool, apiFormatDocTool];
+
+/** 根据环境筛选 API 工具；allTools() 默认语义保持不变。 */
+export function availableApiDocsTools(env: NodeJS.ProcessEnv = process.env): ToolDef[] {
+  return apiDocsAvailable(env) ? apiDocsTools : [];
+}
 
 /** 索引入口信息（给 info / 诊断类工具用）。 */
 export function apiIndexSummary(env: NodeJS.ProcessEnv = process.env): {

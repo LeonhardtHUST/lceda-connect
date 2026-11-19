@@ -309,9 +309,9 @@ async function runMcpGroup(
   }
   const selected = toolsets ?? env.LCEDA_TOOLSETS;
   if (action === "tools") {
-    const { allTools } = await import("./mcp/registry.ts");
+    const { toolsForEnv } = await import("./mcp/registry.ts");
     try {
-      for (const tool of allTools(selected)) {
+      for (const tool of toolsForEnv(env, selected)) {
         io.out(`${paint.cyan(tool.name.padEnd(28))} ${tool.description.split("。")[0] ?? ""}`);
       }
       return 0;

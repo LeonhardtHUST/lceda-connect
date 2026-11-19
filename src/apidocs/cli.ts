@@ -1,6 +1,13 @@
 import { CliUsageError, numberValue, parseArgs, stringValue } from "../core/cliArgs.ts";
 import type { Io } from "../core/io.ts";
-import { getEntry, search, type ApiEntryKind, type ApiEntryDetail } from "./index.ts";
+import {
+  API_DOCS_MISSING,
+  apiDocsAvailable,
+  getEntry,
+  search,
+  type ApiEntryKind,
+  type ApiEntryDetail,
+} from "./index.ts";
 
 /**
  * `lceda-connect api <动作>` 的实现。
@@ -118,6 +125,11 @@ export async function runApiCommand(
   if (parsed.values.help === true) {
     for (const line of apiHelpLines()) io.out(line);
     return 0;
+  }
+
+  if ((action === "search" || action === "get") && !apiDocsAvailable(env)) {
+    io.err(`  ${API_DOCS_MISSING}`);
+    return 1;
   }
 
   const json = parsed.values.json === true;

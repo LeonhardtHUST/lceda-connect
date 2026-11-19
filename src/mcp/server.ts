@@ -11,7 +11,7 @@ import { listAssetFiles, readAssetText } from "../core/assets.ts";
 import { loadConfig } from "../core/config.ts";
 import { resolveMcpWritePath } from "../core/pathPolicy.ts";
 import { packageVersion } from "../main.ts";
-import { allTools, toolsetsForTools, type ToolsetSelection } from "./registry.ts";
+import { toolsetsForTools, toolsForEnv, type ToolsetSelection } from "./registry.ts";
 import { errorResult, listSavedResults, okResult, readSavedResult } from "./result.ts";
 import {
   ToolError,
@@ -92,7 +92,7 @@ export async function invokeTool(
 
 export function createServer(options: CreateServerOptions = {}): McpServer {
   const env = options.env ?? process.env;
-  const tools = options.tools ?? allTools(options.toolsets ?? env.LCEDA_TOOLSETS);
+  const tools = options.tools ?? toolsForEnv(env, options.toolsets ?? env.LCEDA_TOOLSETS);
   const cfg = loadConfig(env);
   const toolNames = tools.map((tool) => tool.name);
   const toolsets = toolsetsForTools(tools);

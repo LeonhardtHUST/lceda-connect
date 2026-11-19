@@ -4,8 +4,10 @@
 
 ## 1. 检查首次发布的候选包
 
-- 公开分发前，核实[第三方许可说明](../THIRD_PARTY_NOTICES.md)里的待核实材料，尤其是随包进入 `assets/` 的 EasyEDA API skill。不能确认授权时先解决许可或调整分发内容，再重做验收。
-- 发布版本必须来自干净、已审查的 Git 提交；不要把未提交的修改打进包。按 GPL-3.0-only 提供该版本所需的对应源码和构建文件。私有 GitHub 地址本身不能让 npm 包的下载者取得源码；发布前需要另行确保下载者能取得该版本的对应源码。
+- 默认分发范围不包含 `assets/api-docs/`（含 `index.json` 检索索引）、`assets/skills/easyeda-api/` 和 `docs/vendor/easyeda-client-cli/` 的文档副本。这些文件只留在源码仓库与私有历史中；打包后按清单确认它们不在 tarball 里，`assets/format/` 等其余资产照常随包。
+- 公开分发前，按[第三方许可说明](../THIRD_PARTY_NOTICES.md)复核 easyeda-api-skill 和官方 CLI 文档的授权：上游快照 `002a39d` 没有独立 LICENSE，只有 `SKILL.md` 的 front matter 声明 MIT，这条声明不能推广到整个上游仓库的素材和脚本；内置 Bridge 服务由上游 `scripts/bridge-server.mjs` 移植，移植实现的许可范围仍需核对。不能确认授权时继续排除这些材料，或调整分发内容后重做验收。
+- 发布版本必须来自干净、已审查的 Git 提交；不要把未提交的修改打进包。按 GPL-3.0-only 提供该版本所需的对应源码和构建文件。只给私有仓库地址，npm 包的下载者取得不了源码；发布前要确保他们能取得该版本对应的源码。
+- 候选包尚未发布到 npm。版本号、发布 workflow 和本文档就绪都不等于已经发布，实际状态以 registry 记录为准。
 - 首发候选可以保留当前的 `0.1.0`。发行时再整理 [CHANGELOG](../CHANGELOG.md) 的待发布条目并记录实际发布日期。
 
 在支持开发工具链的 Node.js 上执行：
@@ -20,7 +22,7 @@ npm pack --ignore-scripts
 node scripts/smoke-npm-package.mjs ./lceda-connect-0.1.0.tgz
 ```
 
-确认打包清单中的 `dist`、`assets`、文档和许可属于候选版本，没有凭据、运行态数据或测试工程。冒烟脚本把本地 tarball 安装到新临时目录，禁用安装脚本，再用 npx 做 stdio 握手；安装运行依赖时可能访问 npm registry，但脚本不登录、不发布。版本变化后替换示例文件名。
+确认打包清单中的 `dist`、`assets`、文档和许可属于候选版本，没有凭据、运行态数据或测试工程；`assets/api-docs/index.json` 与 `assets/skills/easyeda-api/` 不在清单里，`assets/format/` 在清单里。冒烟脚本把本地 tarball 安装到新临时目录，禁用安装脚本，再用 npx 做 stdio 握手；安装运行依赖时可能访问 npm registry，但脚本不登录、不发布。版本变化后替换示例文件名。
 
 ## 2. 手工首发
 

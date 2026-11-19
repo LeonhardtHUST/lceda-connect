@@ -71,6 +71,7 @@ function makeRepo(commits: CommitSpec[]): string {
       "-c",
       "user.email=release@example.com",
       "commit",
+      "--no-gpg-sign",
       "--no-verify",
       "--quiet",
       "-m",

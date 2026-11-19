@@ -1,5 +1,8 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# 文本文件统一 LF：仓库里存 LF，检出到工作区也用 LF。
+# Windows 上 core.autocrlf=true 会把检出转成 CRLF，而 vp check 的格式化检查按 LF 判定，
+# 所以不固定住，Windows runner 就会整批报格式错误（2026-11-19 的首次远端 CI 就是这么挂的）。
+# eol 只影响检出/入库的换行转换，不改已提交的内容，不需要 renormalize 历史。
+* text=auto eol=lf
 
 # Git 钩子脚本由 sh 执行，必须是 LF
 .vite-hooks/** text eol=lf

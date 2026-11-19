@@ -1,6 +1,6 @@
 # assets
 
-随 npm 包发布的数据文件，运行时通过 `src/core/assets.ts` 读取（不经过打包器）。
+运行时通过 `src/core/assets.ts` 读取的数据文件（不经过打包器）。npm 包只收录 `package.json` 的 `files` 列出的目录；`api-docs/`（含索引）和 `skills/easyeda-api/` 留在源码树，不随包分发。
 
 | 目录 | 内容 | 来源仓库 |
 |---|---|---|

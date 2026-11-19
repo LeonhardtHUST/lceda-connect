@@ -78,22 +78,29 @@ test("loadConfig 默认值与旧脚本一致", () => {
 });
 
 test("loadConfig 环境变量生效，且命令行覆盖优先", () => {
+  // 目录类断言用当前平台的 path 拼：Windows 下是反斜杠，Linux/macOS 下是斜杠，
+  // 和实现里的 path.join / homeDir 保持同一套语义。
+  const home = path.join(os.tmpdir(), "lceda-connect-tester");
+  const localAppData = path.join(home, "AppData", "Local");
+  const customExe = path.join(os.tmpdir(), "lceda-pro-custom", "lceda-pro.exe");
+  const customNode = path.join(os.tmpdir(), "lceda-node-bin", "node.exe");
   const env = {
-    USERPROFILE: "C:\\Users\\tester",
-    LOCALAPPDATA: "C:\\Users\\tester\\AppData\\Local",
-    LCEDA_PRO_EXE: "D:\\custom\\lceda-pro.exe",
+    USERPROFILE: home,
+    LOCALAPPDATA: localAppData,
+    LCEDA_PRO_EXE: customExe,
     LCEDA_CDP_PORT: "9333",
-    LCEDA_NODE: "C:\\node\\node.exe",
+    LCEDA_NODE: customNode,
   };
   const fromEnv = loadConfig(env, {});
-  expect(fromEnv.cdp.exePath).toBe("D:\\custom\\lceda-pro.exe");
+  expect(fromEnv.cdp.exePath).toBe(customExe);
   expect(fromEnv.cdp.port).toBe(9333);
-  expect(fromEnv.bridge.nodePath).toBe("C:\\node\\node.exe");
-  expect(fromEnv.bridge.runtimeDir).toBe("C:\\Users\\tester\\AppData\\Local\\lceda-bridge");
-  expect(fromEnv.cdp.pidFile).toBe("C:\\Users\\tester\\.lceda-connect\\cdp\\lceda-cdp.pid");
+  expect(fromEnv.bridge.nodePath).toBe(customNode);
+  expect(fromEnv.bridge.runtimeDir).toBe(path.join(localAppData, "lceda-bridge"));
+  expect(fromEnv.cdp.pidFile).toBe(path.join(home, ".lceda-connect", "cdp", "lceda-cdp.pid"));
 
-  const overridden = loadConfig(env, { cdp: { exePath: "E:\\x\\lceda-pro.exe", port: 9444 } });
-  expect(overridden.cdp.exePath).toBe("E:\\x\\lceda-pro.exe");
+  const overrideExe = path.join(os.tmpdir(), "lceda-pro-override", "lceda-pro.exe");
+  const overridden = loadConfig(env, { cdp: { exePath: overrideExe, port: 9444 } });
+  expect(overridden.cdp.exePath).toBe(overrideExe);
   expect(overridden.cdp.port).toBe(9444);
 });
 

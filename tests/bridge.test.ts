@@ -101,38 +101,42 @@ test("classifyCommandLine 支持自定义标签", () => {
 });
 
 test("selfEntryCandidates 覆盖同目录兄弟 bin，跨入口也能认出守护进程", () => {
-  expect(selfEntryCandidates("C:\\app\\dist\\cli-bridge.mjs")).toEqual([
-    "C:\\app\\dist\\cli-bridge.mjs",
-    "C:\\app\\dist\\cli.mjs",
-    "C:\\app\\dist\\cli-cdp.mjs",
+  // 路径一律用当前平台的 path 拼：Windows 下是反斜杠，Linux/macOS 下是斜杠，
+  // 和实现里的 path.dirname / path.join 保持同一套语义。
+  const dist = path.join(os.tmpdir(), "lceda-connect-app", "dist");
+  const entry = path.join(dist, "cli-bridge.mjs");
+  expect(selfEntryCandidates(entry)).toEqual([
+    entry,
+    path.join(dist, "cli.mjs"),
+    path.join(dist, "cli-cdp.mjs"),
   ]);
 
-  const candidates = selfEntryCandidates("C:\\app\\dist\\cli-bridge.mjs");
+  const candidates = selfEntryCandidates(entry);
   // 用 lceda-connect 入口起的守护进程，lceda-bridge 也要能 stop
-  expect(classifyCommandLine('node "C:\\app\\dist\\cli.mjs" bridge supervise', candidates)).toEqual(
-    {
-      kind: "supervisor",
-      order: 1,
-    },
-  );
+  expect(
+    classifyCommandLine(`node "${path.join(dist, "cli.mjs")}" bridge supervise`, candidates),
+  ).toEqual({
+    kind: "supervisor",
+    order: 1,
+  });
   // 同目录里不相干的脚本不算我们自己的进程
   expect(
-    classifyCommandLine('node "C:\\app\\dist\\tools.mjs" bridge supervise', candidates),
+    classifyCommandLine(`node "${path.join(dist, "tools.mjs")}" bridge supervise`, candidates),
   ).toBeNull();
 });
 
 test("迁移期还活着的旧 PowerShell 守护进程也能被认出", () => {
-  const self = selfEntryCandidates("C:\\app\\dist\\cli-bridge.mjs");
-  const psSupervise =
-    'pwsh.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "D:\\Tools\\bin\\lceda-bridge.ps1" -Action supervise';
+  const dist = path.join(os.tmpdir(), "lceda-connect-app", "dist");
+  const self = selfEntryCandidates(path.join(dist, "cli-bridge.mjs"));
+  const ps1 = path.join(os.tmpdir(), "lceda-tools", "bin", "lceda-bridge.ps1");
+  const psSupervise = `pwsh.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${ps1}" -Action supervise`;
   expect(classifyCommandLine(psSupervise, self)).toEqual({ kind: "supervisor", order: 1 });
-  expect(
-    classifyCommandLine('pwsh.exe -File "D:\\Tools\\bin\\lceda-bridge.ps1" -Action run', self),
-  ).toEqual({ kind: "wrapper", order: 0 });
+  expect(classifyCommandLine(`pwsh.exe -File "${ps1}" -Action run`, self)).toEqual({
+    kind: "wrapper",
+    order: 0,
+  });
   // 只是读脚本内容，不是 bridge 进程
-  expect(
-    classifyCommandLine('pwsh.exe -Command "Get-Content D:\\Tools\\bin\\lceda-bridge.ps1"', self),
-  ).toBeNull();
+  expect(classifyCommandLine(`pwsh.exe -Command "Get-Content ${ps1}"`, self)).toBeNull();
 });
 
 // ─── 杀进程顺序 ──────────────────────────────────────────────────────
@@ -270,16 +274,14 @@ test("buildBridgeChildEnv 固定注入 NO_PROXY 与 LCEDA_* 覆盖", () => {
 
 // ─── bridge-server.mjs 定位 ──────────────────────────────────────────
 test("bridge-server.mjs 候选顺序与解析优先级一致", () => {
-  const env = {
-    USERPROFILE: "C:\\Users\\tester",
-    LCEDA_BRIDGE_SCRIPT: "D:\\custom\\bridge-server.mjs",
-  };
-  expect(bridgeScriptCandidates(env)).toEqual([
-    "D:\\custom\\bridge-server.mjs",
-    "C:\\Users\\tester\\.workbuddy\\skills\\easyeda-api\\scripts\\bridge-server.mjs",
-    "C:\\Users\\tester\\.claude\\skills\\easyeda-api\\scripts\\bridge-server.mjs",
+  const home = path.join(os.tmpdir(), "lceda-script-home");
+  const custom = path.join(os.tmpdir(), "lceda-custom-scripts", "bridge-server.mjs");
+  expect(bridgeScriptCandidates({ USERPROFILE: home, LCEDA_BRIDGE_SCRIPT: custom })).toEqual([
+    custom,
+    path.join(home, ".workbuddy", "skills", "easyeda-api", "scripts", "bridge-server.mjs"),
+    path.join(home, ".claude", "skills", "easyeda-api", "scripts", "bridge-server.mjs"),
   ]);
-  expect(bridgeScriptCandidates({ USERPROFILE: "C:\\Users\\tester" })).toHaveLength(2);
+  expect(bridgeScriptCandidates({ USERPROFILE: home })).toHaveLength(2);
 });
 
 test("resolveBridgeScript 先 LCEDA_BRIDGE_SCRIPT，再 workbuddy / claude", () => {

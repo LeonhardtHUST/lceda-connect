@@ -11,6 +11,10 @@ permissions:
 
 # 工具链约定：
 #
+# 换行：仓库文本统一 LF（见 .gitattributes 的 eol=lf）。
+#   Windows runner 的 core.autocrlf=true 会把检出转成 CRLF，vp check 的格式化检查按 LF 判定，
+#   不固定住就会在 Windows 上整批报格式错误。
+#
 # pnpm：版本只在 package.json 的 packageManager 字段里声明（pnpm@12.21.0）。
 #   pnpm/action-setup 不传 version，直接按 packageManager 装，两处版本对不上 CI 会失败。
 #   pnpm 12 会把解析到的包管理器版本写进 pnpm-lock.yaml 的第一个 YAML 文档
@@ -116,7 +120,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node dist/cli.mjs --version
+          # 版本断言对齐 package.json，而不是写死字面量：发下一版时这里不用跟着改。
+          expected=$(node --input-type=module -e '
+          import { readFileSync } from "node:fs";
+          console.log(JSON.parse(readFileSync("package.json", "utf8")).version);
+          ')
+          test "$(node dist/cli.mjs --version)" = "lceda-connect v$expected"
           node dist/cli-cdp.mjs --help > /dev/null
           node dist/cli-bridge.mjs --help > /dev/null
           # mcp tools 每行一个工具：名称 + 描述。
@@ -129,10 +138,15 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module -e '
+          import { readFileSync } from "node:fs";
           import { allTools, loadConfig, packageVersion } from "./dist/index.mjs";
+          const { version } = JSON.parse(readFileSync("package.json", "utf8"));
           const tools = allTools();
           if (tools.length < 10) throw new Error(`工具数 ${tools.length} < 10`);
-          if (packageVersion() !== "0.1.0") throw new Error(`版本 ${packageVersion()}`);
+          // 版本以 package.json 为准，发版后这条断言不需要修改。
+          if (packageVersion() !== version) {
+            throw new Error(`库版本 ${packageVersion()} != package.json ${version}`);
+          }
           const config = loadConfig({});
           if (config.cdp.port !== 9222) throw new Error(`默认 CDP 端口 ${config.cdp.port}`);
           console.log(`库入口可用：${tools.length} 个工具，版本 ${packageVersion()}`);

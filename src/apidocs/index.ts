@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { assetsDir } from "../core/assets.ts";
@@ -94,7 +94,18 @@ function apiDocsRoot(env: NodeJS.ProcessEnv): string {
   return path.join(assetsDir(env), "api-docs");
 }
 
-/** 载入索引（按 assets 根目录缓存）。索引缺失说明打包没带上 assets/api-docs。 */
+export const API_DOCS_UPSTREAM = "https://prodocs.lceda.cn/cn/api/";
+
+export const API_DOCS_MISSING =
+  "API 文档是可选资料，npm 包不附带。请将自备资料生成的索引 index.json 与原文放入 " +
+  "LCEDA_CONNECT_ASSETS 指向目录的 api-docs/ 下。上游 API 文档：" +
+  API_DOCS_UPSTREAM;
+
+/** 是否安装可选 API 文档索引；按调用方环境定位，不回退到其他资产目录。 */
+export function apiDocsAvailable(env: NodeJS.ProcessEnv = process.env): boolean {
+  return existsSync(path.join(apiDocsRoot(env), "index.json"));
+}
+
 export function loadApiIndex(env: NodeJS.ProcessEnv = process.env): ApiIndexFile {
   const file = path.join(apiDocsRoot(env), "index.json");
   const cached = cache.get(file);
@@ -103,7 +114,7 @@ export function loadApiIndex(env: NodeJS.ProcessEnv = process.env): ApiIndexFile
   try {
     raw = readFileSync(file, "utf8");
   } catch {
-    throw new Error(`找不到 API 索引：${file}（运行 node scripts/build-api-index.ts 生成）`);
+    throw new Error(`${API_DOCS_MISSING}（找不到 API 索引：${file}）`);
   }
   const index = JSON.parse(raw) as ApiIndexFile;
   cache.set(file, index);

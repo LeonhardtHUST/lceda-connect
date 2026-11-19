@@ -1,4 +1,9 @@
-import { statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import { expect, test } from "vite-plus/test";
 
@@ -17,6 +22,80 @@ import { assetPath } from "../src/core/assets.ts";
 import { loadConfig } from "../src/core/config.ts";
 import { createMemoryIo } from "../src/core/io.ts";
 import { ToolError } from "../src/mcp/types.ts";
+import { allTools, toolsForEnv } from "../src/mcp/registry.ts";
+import { createServer } from "../src/mcp/server.ts";
+import { main } from "../src/main.ts";
+
+test("可选文档缺失与自备资料：CLI、MCP 清单及 lceda_info 使用同一环境", async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "lceda-api-"));
+  const env = { ...process.env, LCEDA_CONNECT_ASSETS: root };
+  try {
+    expect(allTools("api").some((tool) => tool.name === "api_search")).toBe(true);
+    for (const present of [false, true]) {
+      if (present) {
+        mkdirSync(path.join(root, "api-docs", "references"), { recursive: true });
+        writeFileSync(
+          path.join(root, "api-docs", "index.json"),
+          JSON.stringify({
+            version: 1,
+            source: { repo: "user-provided", sha: "local", generatedAt: "" },
+            counts: { class: 1, interface: 0, enum: 0, type: 0 },
+            entries: [
+              {
+                name: "Custom",
+                kind: "class",
+                file: "references/Custom.md",
+                summary: "Custom",
+                members: [{ name: "create", kind: "method", signature: "create()" }],
+              },
+            ],
+          }),
+        );
+        writeFileSync(
+          path.join(root, "api-docs", "references", "Custom.md"),
+          "### create\nUser-provided original documentation",
+        );
+      }
+      const io = createMemoryIo();
+      expect(await runApiCommand(["search", "Custom", "--json"], io, env)).toBe(present ? 0 : 1);
+      if (present) {
+        expect(io.lines.join("\n")).toContain("Custom");
+        expect((getEntry("Custom", "create", env) as ApiMemberText).text).toContain(
+          "User-provided",
+        );
+      } else {
+        expect(io.errors.join("\n")).toContain("可选资料");
+        expect(io.errors.join("\n")).toContain("https://prodocs.lceda.cn/cn/api/");
+      }
+      for (const selection of [undefined, "api", "offline"]) {
+        const expected = toolsForEnv(env, selection).map((tool) => tool.name);
+        expect(expected.includes("api_search")).toBe(present);
+        const cliIo = createMemoryIo();
+        const argv = ["mcp", "tools", ...(selection ? ["--toolsets", selection] : [])];
+        expect(await main({ argv, io: cliIo, env })).toBe(0);
+        expect(cliIo.lines.join("\n").includes("api_search")).toBe(present);
+        const server = createServer({ env, toolsets: selection });
+        const client = new Client({ name: "optional-docs-test", version: "0" });
+        const [ct, st] = InMemoryTransport.createLinkedPair();
+        await server.connect(st);
+        await client.connect(ct);
+        try {
+          const names = (await client.listTools()).tools.map((tool) => tool.name);
+          expect(names).toEqual(expected);
+          const info = (await client.callTool({ name: "lceda_info", arguments: {} }))
+            .structuredContent as { tools: string[]; toolsets: Record<string, string[]> };
+          expect(info?.tools).toEqual(expected);
+          expect(Object.hasOwn(info?.toolsets ?? {}, "api")).toBe(present);
+        } finally {
+          await client.close();
+          await server.close();
+        }
+      }
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 // 测试用已生成的 assets/api-docs/index.json 与原文，不依赖网络。
 

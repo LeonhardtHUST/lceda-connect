@@ -6,14 +6,20 @@
 
 ## 收录或移植的外部内容
 
-| 上游项目                                                                        | 本项目使用的内容                                                 | 收录位置与说明                                                                                                                                                          |
-| ------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [easyeda/easyeda-eprj3-skill](https://github.com/easyeda/easyeda-eprj3-skill)   | 文件夹工程的记录模型、生成与校验脚本、模板、配方、文档和测试夹具 | 记录层、校验和网表移植到 `src/eprj3/`；原脚本作为 Node sidecar 保留。见 [移植映射](assets/skills/eprj3/SOURCE.md)，保留 [上游 MIT 许可](assets/sidecar/eprj3/LICENSE)。 |
-| [easyeda/easyeda-api-skill](https://github.com/easyeda/easyeda-api-skill)       | AI Bridge 协议与服务、扩展 API 参考、格式文档和使用指南          | 服务移植到 `src/bridge/`，文档用于离线检索。见 [API 来源](assets/api-docs/SOURCE.md) 与 [bridge 来源](assets/skills/easyeda-api/SOURCE.md)。                            |
-| [easyeda/easyeda-format-skill](https://github.com/easyeda/easyeda-format-skill) | JSON Schema、图元字段说明、示例、类型索引和格式变更记录          | 数据保留在 `assets/format/`，校验器重写为 TS。见 [来源说明](assets/format/SOURCE.md)，保留 [上游 MIT 许可](assets/skills/easyeda-format/LICENSE)。                      |
-| [easyeda/easyeda-client-cli](https://github.com/easyeda/easyeda-client-cli)     | 官方客户端 CLI 的四篇说明文档                                    | 仅作官方工具的参考资料，未把文档所描述的功能当成本项目已实现能力。见 [来源说明](docs/vendor/easyeda-client-cli/SOURCE.md)。                                             |
+| 上游项目                                                                        | 本项目使用的内容                                                 | 收录位置与说明                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [easyeda/easyeda-eprj3-skill](https://github.com/easyeda/easyeda-eprj3-skill)   | 文件夹工程的记录模型、生成与校验脚本、模板、配方、文档和测试夹具 | 记录层、校验和网表移植到 `src/eprj3/`；原脚本作为 Node sidecar 保留。见 [移植映射](assets/skills/eprj3/SOURCE.md)，保留 [上游 MIT 许可](assets/sidecar/eprj3/LICENSE)。                                                                          |
+| [easyeda/easyeda-api-skill](https://github.com/easyeda/easyeda-api-skill)       | AI Bridge 协议与服务、扩展 API 参考、格式文档和使用指南          | 服务按上游 `scripts/bridge-server.mjs` 移植到 `src/bridge/`；文档留在源码树 `assets/api-docs/` 与 `assets/skills/easyeda-api/`，默认 npm 包不收录。见 [API 来源](assets/api-docs/SOURCE.md) 与 [技能来源](assets/skills/easyeda-api/SOURCE.md)。 |
+| [easyeda/easyeda-format-skill](https://github.com/easyeda/easyeda-format-skill) | JSON Schema、图元字段说明、示例、类型索引和格式变更记录          | 数据保留在 `assets/format/`，校验器重写为 TS。见 [来源说明](assets/format/SOURCE.md)，保留 [上游 MIT 许可](assets/skills/easyeda-format/LICENSE)。                                                                                               |
+| [easyeda/easyeda-client-cli](https://github.com/easyeda/easyeda-client-cli)     | 官方客户端 CLI 的四篇说明文档                                    | 仅作官方工具的参考资料，未把文档所描述的功能当成本项目已实现能力。见 [来源说明](docs/vendor/easyeda-client-cli/SOURCE.md)。                                                                                                                      |
 
 上表记录实际的第三方上游，不把本地自有 fork 作为另一项重复致谢。许可文本及待核实事项见 [第三方许可说明](THIRD_PARTY_NOTICES.md)。
+
+## 分发范围与许可边界
+
+默认 npm 包不包含 `assets/api-docs/`（含 `index.json` 检索索引）和 `assets/skills/easyeda-api/` 的原文，也不包含官方客户端 CLI 的文档副本（`docs/vendor/easyeda-client-cli/`）。这些文件保留在源码仓库和私有历史中，供维护与开发使用；离线检索在本机读取这些原文，不把它们作为发布物再分发。装入 npm 包的用户需要离线 API 文档时，把 `LCEDA_CONNECT_ASSETS` 指向自备的同结构 assets 目录；格式校验使用的 `assets/format/` 等其余资产照常随包发布。
+
+easyeda-api-skill 的上游快照（`002a39d6`）没有独立的 LICENSE 文件，只有 `SKILL.md` 的 front matter 声明 `license: MIT`。这条声明只覆盖它所在的文件，不能据此认定整个上游仓库的文档、素材和脚本都按 MIT 授权。内置 Bridge 服务由该上游的 `scripts/bridge-server.mjs` 移植而来，这部分实现的许可范围仍需核对，不把它记作本项目的独立实现。
 
 ## 继承的审查方法与文档规则
 

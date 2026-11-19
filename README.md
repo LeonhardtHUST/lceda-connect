@@ -7,7 +7,7 @@
 | `cdp`    | 带调试端口启动客户端并管理实例；连上后可发现端点、列页面、求值、截图、切换文档                      |
 | `bridge` | AI Bridge 服务管理（守护、自动重启、日志、自检），内置服务端；可列窗口、在编辑器里执行 `eda.*` 代码 |
 | `eda`    | 编辑器动词：双通道自检、读板、DRC、板指纹、自动布线、动词台账检索                                   |
-| `api`    | 离线检索扩展 API 文档（422 篇参考）                                                                 |
+| `api`    | 离线检索扩展 API 文档（422 篇参考，需本地文档数据）                                                 |
 | `format` | 文件格式类型检索、图元字段说明、记录校验、示例                                                      |
 | `epro2`  | 离线解析 `.epro2` 工程：双侧网表、PCB 几何、一致性报告、两版对比                                    |
 | `eprj3`  | 读取与校验 `.eprj3` 文件夹工程、导出网表，调用建工程与门禁脚本                                      |
@@ -125,10 +125,18 @@ claude mcp add --scope project --transport stdio lceda -- npx -y lceda-connect m
 - 写操作（在编辑器里执行代码、自动布线、建工程、调用外部脚本）默认不执行，要传 `confirm: true`。`cdp_eval` 只放行能确认为只读的表达式（如 `getX` / `listX` 一类查询调用和普通 DOM 读取），其余都要 `confirm: true`；旧参数 `allowSideEffects` 作为弃用别名保留。
 - 返回对象的工具同时给出 `structuredContent`。
 - 单个结果超过 64 KiB 时，完整内容写到 `<LCEDA_CONNECT_HOME 或 ~/.lceda-connect>/results/`（保留最近 50 个），工具返回一份合法 JSON 摘要（含原始大小、预览和 `resultUri`）加一条 `resource_link`，用 `lceda://results/{id}` 读回完整内容。声明了输出 schema 的工具超限时报 `RESULT_TOO_LARGE`。大产物仍建议用 `outDir` 落盘。
-- 各源仓库的 SKILL.md 与 references 以 `lceda://skills/{+path}` 资源模板提供，也可用 `skill_docs` 工具读取。
+- 随包发布的 SKILL.md 与 references 以 `lceda://skills/{+path}` 资源模板提供，也可用 `skill_docs` 工具读取。
 - 写路径只允许在客户端声明的 roots、`LCEDA_ALLOWED_ROOTS` 和默认根（当前目录、系统临时目录、connect home）之内，越界报 `PATH_NOT_ALLOWED`。读路径不受限制。
 - 支持请求取消（报 `CANCELLED`）；`sim_run`、`eprj3_gates` 等长任务会发送进度通知。
 - 工具集可裁剪：`lceda-connect mcp --toolsets offline,eda`，或设置 `LCEDA_TOOLSETS`。可选 `core` / `offline` / `live`，以及 `cdp`、`bridge`、`eda`、`api`、`format`、`epro2`、`eprj3`、`sim`；`core` 总是保留。
+
+## 离线 API 文档与 assets
+
+`api` 命令和 `api_*` MCP 工具读取 `assets/api-docs/` 下的索引与原文。这份材料来自 easyeda/easyeda-api-skill，默认 npm 包不收录 `assets/api-docs/` 和 `assets/skills/easyeda-api/`，只保留在源码仓库与私有历史中；官方客户端 CLI 的参考文档也不随包发布。
+
+只安装 npm 包时，API 文档检索没有数据可用：CLI 会提示缺少文档数据，MCP 工具清单按可用数据调整。要用这项能力，把 `LCEDA_CONNECT_ASSETS` 指向自备的 assets 目录，例如源码仓库的 `assets/`，或用自备资料生成同结构目录后运行 `node scripts/build-api-index.ts` 重建索引。格式校验与 `assets/format/` 不受影响。
+
+上游的许可状态见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，源码树里的收录范围见 `assets/api-docs/SOURCE.md` 和 `assets/skills/easyeda-api/SOURCE.md`。npm 包的实际发布状态以 registry 记录为准，仓库里的版本号不代表已经发布。
 
 ## 安全模型
 
@@ -260,18 +268,18 @@ lceda-connect sim run deck.cir --mode tran --out ./sim-out
 
 ## 环境变量
 
-| 变量                   | 作用                        | 默认值                                     |
-| ---------------------- | --------------------------- | ------------------------------------------ |
-| `LCEDA_PRO_EXE`        | 客户端主程序路径            | `D:\Program Files\lceda-pro\lceda-pro.exe` |
-| `LCEDA_CDP_PORT`       | CDP 调试端口                | `9222`                                     |
-| `LCEDA_CONNECT_HOME`   | CDP 运行态根目录            | `~/.lceda-connect`                         |
-| `LCEDA_NODE`           | 指定 node.exe，跳过自动探测 | 自动探测                                   |
-| `LCEDA_BRIDGE_SCRIPT`  | 指定 `bridge-server.mjs`    | 自动探测                                   |
-| `LCEDA_BRIDGE_RUNTIME` | bridge 运行态目录           | `%LOCALAPPDATA%\lceda-bridge`              |
-| `EASYEDA_CDP_TIMEOUT`  | CDP 单次调用超时（秒）      | `20`                                       |
-| `NGSPICE_BIN`          | ngspice 可执行文件          | 自动探测                                   |
-| `LCEDA_PYTHON`         | sidecar 使用的 Python       | 自动探测                                   |
-| `LCEDA_CONNECT_ASSETS` | 覆盖 assets 目录            | 包内 `assets/`                             |
+| 变量                   | 作用                                          | 默认值                                     |
+| ---------------------- | --------------------------------------------- | ------------------------------------------ |
+| `LCEDA_PRO_EXE`        | 客户端主程序路径                              | `D:\Program Files\lceda-pro\lceda-pro.exe` |
+| `LCEDA_CDP_PORT`       | CDP 调试端口                                  | `9222`                                     |
+| `LCEDA_CONNECT_HOME`   | CDP 运行态根目录                              | `~/.lceda-connect`                         |
+| `LCEDA_NODE`           | 指定 node.exe，跳过自动探测                   | 自动探测                                   |
+| `LCEDA_BRIDGE_SCRIPT`  | 指定 `bridge-server.mjs`                      | 自动探测                                   |
+| `LCEDA_BRIDGE_RUNTIME` | bridge 运行态目录                             | `%LOCALAPPDATA%\lceda-bridge`              |
+| `EASYEDA_CDP_TIMEOUT`  | CDP 单次调用超时（秒）                        | `20`                                       |
+| `NGSPICE_BIN`          | ngspice 可执行文件                            | 自动探测                                   |
+| `LCEDA_PYTHON`         | sidecar 使用的 Python                         | 自动探测                                   |
+| `LCEDA_CONNECT_ASSETS` | 覆盖 assets 目录（可指向自备的 API 文档数据） | 包内 `assets/`                             |
 
 bridge 与 MCP 的安全相关变量（详见「安全模型」）：
 
@@ -339,7 +347,7 @@ src/
   cdp/ bridge/ eda/      编辑器连接与动词
   apidocs/ format/       API 文档检索、格式校验
   epro2/ eprj3/ sim/     工程文件解析、ngspice 仿真
-assets/                  随包发布的知识文档、Schema、API 参考与 sidecar 脚本
+assets/                  知识文档、Schema、API 参考与 sidecar 脚本；API 参考与 easyeda-api 技能原文默认不随 npm 包发布
 docs/                    合并方案、eprj3 文档、官方 CLI 参考
 tests/                   单元与集成测试（vite-plus/test）
 ```

@@ -126,6 +126,7 @@ async function main() {
   const installEnv = { ...process.env, CI: "1", npm_config_update_notifier: "false" };
   delete installEnv.NODE_OPTIONS;
   const runEnv = { ...installEnv, npm_config_offline: "true", LCEDA_TOOLSETS: "" };
+  delete runEnv.LCEDA_CONNECT_ASSETS;
   runEnv.LCEDA_CONNECT_HOME = path.join(workDir, "home");
   runEnv.LCEDA_BRIDGE_RUNTIME = path.join(workDir, "bridge-runtime");
   log(`tarball: ${tarball}`);
@@ -158,6 +159,22 @@ async function main() {
       check(fs.existsSync(path.join(binDir, name + ext)), `缺少 shim：${name}${ext}`);
     }
     check(fs.existsSync(path.join(assetsDir, "README.md")), "assets 未随包安装");
+    for (const excluded of ["api-docs", "skills/easyeda-api"]) {
+      check(!fs.existsSync(path.join(assetsDir, excluded)), `不应随包安装：assets/${excluded}`);
+    }
+    const apiCli = nodeSync(
+      [path.join(pkgDir, "dist", "cli.mjs"), "api", "search", "via"],
+      "",
+      installDir,
+      runEnv,
+      TIMEOUT,
+    );
+    check(
+      apiCli.status === 1 &&
+        apiCli.stderr.includes("可选资料") &&
+        apiCli.stderr.includes("https://prodocs.lceda.cn/cn/api/"),
+      "API CLI 没有说明可选文档与上游链接",
+    );
     log(`OK   npm install --ignore-scripts：${pkg.name}@${pkg.version}，shim 与 assets 就位`);
 
     const offline = smokeSession(
@@ -185,7 +202,28 @@ async function main() {
     );
     check(explicit.info?.version === pkg.version, "独立入口版本与已安装包不一致");
     check(textOf(explicit.reply(4)).length > 200, "独立入口未读取到已安装的技能文档");
-    log(`OK   ${explicit.label}：握手、lceda_info、${explicit.tools.length} 个离线工具\n全部通过`);
+    for (const session of [
+      offline,
+      explicit,
+      smokeSession(["lceda-mcp"], installDir, runEnv),
+      smokeSession(["lceda-mcp", "--toolsets", "api"], installDir, runEnv),
+    ]) {
+      check(
+        !session.tools.some((name) => name.startsWith("api_")),
+        `${session.label}: 宣传了未安装的 API 工具`,
+      );
+      check(
+        JSON.stringify(session.info?.tools) === JSON.stringify(session.tools),
+        `${session.label}: lceda_info 与 tools/list 不一致`,
+      );
+      check(
+        !Object.hasOwn(session.info?.toolsets ?? {}, "api"),
+        `${session.label}: lceda_info 仍有 api toolset`,
+      );
+    }
+    log(
+      `OK   ${explicit.label}：握手、lceda_info、${explicit.tools.length} 个离线工具；默认及指定 api 清单验证通过\n全部通过`,
+    );
   } finally {
     try {
       fs.rmSync(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
