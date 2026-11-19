@@ -32,8 +32,12 @@
     "dist",
     "assets",
     "README.md",
+    "CHANGELOG.md",
     "CREDITS.md",
-    "THIRD_PARTY_NOTICES.md"
+    "THIRD_PARTY_NOTICES.md",
+    "docs/merge-plan.md",
+    "docs/publishing.md",
+    "docs/quickstart.md"
   ],
   "type": "module",
   "types": "./dist/index.d.mts",
@@ -50,7 +54,8 @@
     "./package.json": "./package.json"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "vp pack",

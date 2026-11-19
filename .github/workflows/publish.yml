@@ -1,0 +1,306 @@
+name: Publish
+
+# 发布只认一种显式意图：默认分支 master 上，HEAD 提交标题精确等于
+# `chore(release): 发布 vX.Y.Z`，并且该提交相对第一父提交把 package.json 的稳定 SemVer
+# 严格抬高、包名不变、标题版本与 package.json 一致。其余 push 只做判定、不发布；以
+# `chore(release):` 开头但标题不合法（带 prerelease、缺版本号、擅自改写）会直接失败，
+# 不会降级成「普通 push」静默跳过。
+#
+# 三段信任边界：
+#   gate    —— 没有 id-token，只读 git 和 registry，判定意图 / 版本前进 / registry 状态；
+#   verify  —— 没有 id-token，跑 check / test / build，打出候选 tgz 并冒烟，上传同一份产物；
+#   publish —— 唯一持有 id-token: write 的 job，environment: npm-release，只下载产物并执行
+#              `npm publish <tgz>`；不 checkout、不安装依赖、不运行任何仓库脚本。
+#
+# 为什么 publish job 既不 checkout 也不跑脚本：npm 只在 spec 是目录时才运行
+# prepublishOnly / prepack / postpack / publish / postpublish（npm 11 的
+# lib/commands/publish.js 与 libnpmpack 都以 `spec.type === 'directory'` 作为条件），
+# 发布一个 .tgz 时这些生命周期脚本一律不执行，因此持有 OIDC token 的 job 里不需要、
+# 也不应该出现仓库代码。tarball 里的 publishConfig 仍然生效（access: public 来自它）。
+#
+# 发布默认关闭：仓库变量 NPM_RELEASE_ENABLED 不是 'true' 时 publish job 直接跳过。
+# 打开之前先在 npmjs.com 建好 trusted publisher：
+#   Packages → lceda-connect → Settings → Trusted publishing → GitHub Actions
+#   Organization or user = LeonhardtHUST
+#   Repository           = lceda-connect
+#   Workflow filename    = publish.yml
+#   Environment name     = npm-release
+#   Allowed actions 必须包含 npm publish（只勾 npm stage publish 不会放行本次发布）
+# 新建的 trusted publisher 必须在 2 天内完成首次成功发布，否则过期且不可编辑。
+# 发布成功后可以把 Publishing access 收紧为「Require two-factor authentication and
+# disallow tokens」，trusted publisher 走 OIDC，不受这条限制影响。
+#
+# 版本号不可重用：gate 只在 registry 明确返回 404 时放行；200 视为已发布（默认失败），
+# 5xx、429、超时、连接断开一律失败——查询失败不等于未发布。重跑一个已经发布的版本会在
+# gate 直接失败，这是有意的，避免「重新发布」把内容差异掩盖掉。
+
+on:
+  push:
+    branches: [master]
+
+# 默认最小权限；id-token 只在 publish job 里单独授予
+permissions:
+  contents: read
+
+env:
+  # GitHub 事件字段一律先落到 env 再在 shell 里引用，不直接插值进命令文本
+  EXPECTED_REPOSITORY: LeonhardtHUST/lceda-connect
+  EXPECTED_PACKAGE: lceda-connect
+  NPM_REGISTRY: https://registry.npmjs.org/
+  # trusted publishing（OIDC）官方要求的 npm 下限，见 https://docs.npmjs.com/trusted-publishers
+  NPM_MIN_VERSION: 11.5.1
+
+jobs:
+  gate:
+    name: 发布意图与版本前进
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+      version: ${{ steps.plan.outputs.version }}
+      reason: ${{ steps.plan.outputs.reason }}
+    steps:
+      - name: 锁定仓库身份与分支
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$REPOSITORY" != "$EXPECTED_REPOSITORY" ]; then
+            echo "::error::仓库身份不匹配：$REPOSITORY != $EXPECTED_REPOSITORY"
+            exit 1
+          fi
+          if [ "$REF" != "refs/heads/master" ]; then
+            echo "::error::只允许从 master 发布，当前是 $REF"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          # 需要读取第一父提交的 package.json，因此要两层历史
+          fetch-depth: 2
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          # Node 24：npm 自带版本高于 OIDC 要求的 11.5.1
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: 判定发布意图、版本前进与 registry 状态
+        id: plan
+        run: node scripts/release-version.mjs plan
+
+      - name: 提示发布开关状态
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          RELEASE_ENABLED: ${{ vars.NPM_RELEASE_ENABLED }}
+        run: |
+          set -euo pipefail
+          if [ "$RELEASE_ENABLED" != "true" ]; then
+            echo "::notice::发布开关未打开（vars.NPM_RELEASE_ENABLED != 'true'）：本次只判定，不发布"
+          fi
+
+  verify:
+    name: 构建并验证候选包（无发布权限）
+    needs: gate
+    if: needs.gate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      tarball: ${{ steps.pack.outputs.tarball }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: 安装 pnpm（版本取自 package.json 的 packageManager）
+        uses: pnpm/action-setup@v6
+
+      - name: 安装 Node 与 npm
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          # 发布链路上不读包管理器缓存：缓存中毒会直接变成被签名的产物
+          package-manager-cache: false
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查与 lint（vp check）
+        run: pnpm exec vp check
+
+      - name: 测试（vp test）
+        run: pnpm exec vp test
+
+      - name: 构建（vp pack）
+        run: pnpm exec vp pack
+
+      - name: 打包候选 tarball 并计算哈希
+        id: pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          destination="$GITHUB_WORKSPACE/npm-package"
+          mkdir -p "$destination"
+          npm pack --ignore-scripts --json --pack-destination "$destination" > "$RUNNER_TEMP/npm-pack.json"
+          node --input-type=module -e '
+            import { appendFileSync, readFileSync } from "node:fs";
+            import { createHash } from "node:crypto";
+            import path from "node:path";
+            const [info] = JSON.parse(readFileSync(process.argv[1], "utf8"));
+            if (!info || !info.filename) throw new Error("npm pack --json 没有返回文件名");
+            if (info.unpackedSize >= 15 * 1024 * 1024 || info.entryCount >= 2500) {
+              throw new Error("候选包超过体积或文件数上限");
+            }
+            const tarball = path.resolve(process.argv[2], info.filename);
+            const digest = createHash("sha256").update(readFileSync(tarball)).digest("hex");
+            appendFileSync(process.env.GITHUB_OUTPUT, "tarball=" + tarball + "\nsha256=" + digest + "\n");
+            console.log(tarball + " sha256:" + digest);
+          ' "$RUNNER_TEMP/npm-pack.json" "$destination"
+
+      - name: 校验候选 tarball 的包名、版本与 private 标记
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          EXPECTED_VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          tar -xzOf "$TARBALL" package/package.json > "$RUNNER_TEMP/packed-package.json"
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const manifest = JSON.parse(readFileSync(process.argv[1], "utf8"));
+            const expectedName = process.env.EXPECTED_PACKAGE;
+            const expectedVersion = process.env.EXPECTED_VERSION;
+            if (manifest.name !== expectedName) throw new Error("包名不符：" + manifest.name);
+            if (manifest.version !== expectedVersion) throw new Error("版本不符：" + manifest.version + " != " + expectedVersion);
+            if (manifest.private) throw new Error("private 包不能发布");
+            console.log("候选包 " + manifest.name + "@" + manifest.version);
+          ' "$RUNNER_TEMP/packed-package.json"
+
+      # 冒烟脚本由另一任务提供；它装进临时目录后验证 CLI、库入口和 MCP 握手。
+      # 脚本缺失时这里应当直接失败，而不是静默跳过。
+      - name: 冒烟候选 tarball
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: node scripts/smoke-npm-package.mjs "$TARBALL"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: ${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: 发布到 npm（默认关闭）
+    needs: [gate, verify]
+    # 判定为发布，且仓库变量显式打开；两者缺一都不发布
+    if: needs.gate.outputs.publish == 'true' && vars.NPM_RELEASE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # 部署环境保护：需要人工审批时在这里加 required reviewers
+    environment: npm-release
+    # 串行只加在真正发布的 job 上：普通 push 不进入这个队列，因此不会把等待中的发布挤掉。
+    # cancel-in-progress: false 时 GitHub 同一组内只保留一个 pending；两个发布连着来时后一个
+    # 会取消前一个 pending，这是有意的「最新发布胜出」，不会取消已经 running 的发布。
+    concurrency:
+      group: publish-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      # 整个流程只有这里持有 OIDC：npm 用它换短期 token，并为公开包自动生成 provenance
+      id-token: write
+    steps:
+      - name: 锁定仓库身份
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$REPOSITORY" != "$EXPECTED_REPOSITORY" ]; then
+            echo "::error::仓库身份不匹配：$REPOSITORY != $EXPECTED_REPOSITORY"
+            exit 1
+          fi
+
+      - name: 确认发布 job 里没有长期 token
+        run: |
+          set -euo pipefail
+          for name in NODE_AUTH_TOKEN NPM_TOKEN NPM_AUTH_TOKEN NPM_ID_TOKEN; do
+            if [ -n "${!name:-}" ]; then
+              echo "::error::$name 必须为空：发布只用 GitHub OIDC，不读任何长期 token"
+              exit 1
+            fi
+          done
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: npm-package
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: 锁定 npm 版本下限
+        run: |
+          set -euo pipefail
+          node -e '
+            const { execFileSync } = require("node:child_process");
+            const current = execFileSync("npm", ["--version"], { encoding: "utf8" }).trim();
+            const min = process.env.NPM_MIN_VERSION;
+            const parts = (value) => value.split(".").map((part) => Number(part) || 0);
+            const [actual, required] = [parts(current), parts(min)];
+            for (let index = 0; index < 3; index += 1) {
+              if ((actual[index] ?? 0) > (required[index] ?? 0)) break;
+              if ((actual[index] ?? 0) < (required[index] ?? 0)) {
+                throw new Error("npm " + current + " 低于 OIDC 要求的 " + min);
+              }
+            }
+            console.log("npm " + current);
+          '
+
+      - name: 校验下载的产物与构建 job 一致
+        env:
+          EXPECTED_TARBALL: ${{ needs.verify.outputs.tarball }}
+          EXPECTED_SHA256: ${{ needs.verify.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          tarball="$GITHUB_WORKSPACE/npm-package/$(basename "$EXPECTED_TARBALL")"
+          case "$tarball" in
+            *.tgz) ;;
+            *) echo "::error::产物不是 .tgz：$tarball"; exit 1 ;;
+          esac
+          test -f "$tarball"
+          actual=$(sha256sum "$tarball" | cut -d " " -f1)
+          if [ "$actual" != "$EXPECTED_SHA256" ]; then
+            echo "::error::产物哈希不一致：$actual != $EXPECTED_SHA256"
+            exit 1
+          fi
+          echo "TARBALL=$tarball" >> "$GITHUB_ENV"
+
+      - name: 发布候选 tarball
+        # 不 checkout、不安装依赖、不跑仓库脚本；tarball 发布不会触发任何生命周期脚本。
+        # registry 显式指定成 gate 检查过的同一个值，不依赖环境里可能被改写的默认 registry。
+        # 版本已存在时 npm 会以 "You cannot publish over the previously published versions"
+        # 失败，这里不做 force，也不重试。
+        run: npm publish "$TARBALL" --ignore-scripts --access public --registry "$NPM_REGISTRY"
+
+      - name: 记录发布结果
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### 已发布"
+            echo ""
+            echo "- 包：$EXPECTED_PACKAGE"
+            echo "- 版本：v$VERSION"
+            echo "- 身份：GitHub Actions OIDC（$EXPECTED_REPOSITORY / publish.yml / npm-release）"
+          } >> "$GITHUB_STEP_SUMMARY"

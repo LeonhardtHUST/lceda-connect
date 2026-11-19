@@ -10,6 +10,8 @@
 
 ### 新增
 
+- README 新增 Codex、DeepSeek Harness、Claude Code 的 stdio Quick Start；打包检查覆盖本地 tarball 安装与两个 npx 入口。
+- 新增 npm 发布工作流和 Trusted Publisher 配置手册；自动发布默认关闭。
 - bridge 启动时生成 token，写入 `LCEDA_BRIDGE_RUNTIME` 下的 `token-<端口>.txt`，也可用 `LCEDA_BRIDGE_TOKEN` 指定；`/health` 免 token。
 - `LCEDA_BRIDGE_ALLOWED_ORIGINS` 用来放行带 Origin 的 agent 端来源。
 - 客户端 token 无效时报 `BRIDGE_UNAUTHORIZED`。

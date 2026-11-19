@@ -1,6 +1,6 @@
 # lceda-connect
 
-嘉立创EDA专业版（EasyEDA Pro）的 MCP 服务与命令行工具。一个 npm 包，`npx` / `vpx` 直接可用。它由 9 个仓库合并而来（外部项目致谢见 [CREDITS.md](CREDITS.md)，合并方案见 [docs/merge-plan.md](docs/merge-plan.md)）。
+嘉立创EDA专业版（EasyEDA Pro）的 MCP 服务与命令行工具。npm 包提供本机 stdio 入口，发布后可用 `npx` 启动。它由 9 个仓库合并而来（外部项目致谢见 [CREDITS.md](CREDITS.md)，合并方案见 [docs/merge-plan.md](docs/merge-plan.md)）。
 
 | 命令组   | 做什么                                                                                              |
 | -------- | --------------------------------------------------------------------------------------------------- |
@@ -14,19 +14,113 @@
 | `sim`    | ngspice 仿真：网表生成、运行、raw 解析、指标、叠层估算、Touchstone                                  |
 | `mcp`    | 以 stdio 运行 MCP 服务，上述能力都以 MCP 工具形式提供                                               |
 
-## MCP 服务
+## Quick Start
 
-在 MCP 客户端里这样配置：
+### 1. 验证 npx 与 stdio MCP
+
+使用 Node.js 20.11 或更新版本。工具清单和离线功能不需要启动 EDA。包发布到 npm 后，直接运行：
+
+```bash
+npx -y lceda-connect mcp tools
+```
+
+把本地 MCP 接入客户端时使用：
+
+```text
+npx -y lceda-connect mcp
+```
+
+stdout 只用于 MCP JSON-RPC，启动日志写入 stderr。终端等待输入是正常的；配置客户端时不必另开终端常驻。首次试用建议加上 `--toolsets offline`，先调用 `lceda_info` 验证连接；需要编辑器工具时改用 `--toolsets live` 或移除此参数。`offline` 仍包含本地写盘和仿真工具，不是沙箱。
+
+包还没有发布时，从仓库构建需要 Node.js 22.18+（22.x）、24.11+（24.x）或 26+ 及 pnpm：
+
+```bash
+pnpm install --frozen-lockfile
+pnpm exec vp pack
+node dist/cli.mjs mcp tools
+```
+
+本地构建后，也可把下方客户端配置里的 `npx` 换成 `node`，参数换成 `["<仓库绝对路径>/dist/cli.mjs", "mcp", "--toolsets", "offline"]`。完整的 tarball 检查见[发布手册](docs/publishing.md)。
+
+### 2. Codex
+
+Codex CLI 支持直接添加 stdio MCP。`--` 后面的内容原样传给服务器：
+
+```bash
+codex mcp add lceda -- npx -y lceda-connect mcp
+codex mcp list
+```
+
+只加载离线工具：
+
+```bash
+codex mcp add lceda-offline -- npx -y lceda-connect mcp --toolsets offline
+```
+
+在 Codex 桌面端也可通过 MCP 设置添加本地服务，或编辑 `~/.codex/config.toml`（自定义 `CODEX_HOME` 时使用对应目录）：
+
+```toml
+[mcp_servers.lceda]
+command = "npx"
+args = ["-y", "lceda-connect", "mcp", "--toolsets", "offline"]
+```
+
+CLI 与 TOML 选一种方式配置同名服务即可。不要把 `LCEDA_BRIDGE_TOKEN` 写进项目文件。
+
+### 3. ChatGPT Desktop / ChatGPT MCP
+
+ChatGPT 的[自定义 MCP 连接](https://developers.openai.com/api/docs/guides/custom-mcp-server)不能直接启动本机 `npx`。要直接使用本地 stdio，选上面的 Codex；若你的 ChatGPT 工作区支持 [Secure MCP Tunnel](https://developers.openai.com/blog/connect-private-mcp-servers-to-openai-products)，可按 OpenAI 指南通过隧道接入。隧道不随本包提供，也不要把本机 EDA Bridge 端口当作 MCP endpoint 或直接暴露到公网。
+
+### 4. DeepSeek Harness
+
+在 DeepSeek Harness Desktop / Web 的设置中打开 MCP 管理，新增服务并填写以下字段。参数分开填，每项是一个参数：
+
+| 字段      | 值                                                    |
+| --------- | ----------------------------------------------------- |
+| 名称      | `lceda`                                               |
+| Transport | `stdio`                                               |
+| Command   | `npx`                                                 |
+| Args      | `-y`、`lceda-connect`、`mcp`、`--toolsets`、`offline` |
+
+保存后查看连接状态，并调用 `mcp__lceda__lceda_info`。如果通过组合文件配置而非界面操作，见[配置进阶](docs/quickstart.md)。
+
+### 5. Claude Code
+
+Claude Code 的 stdio MCP 使用 `claude mcp add`：
+
+```bash
+claude mcp add --transport stdio lceda -- npx -y lceda-connect mcp
+claude mcp list
+claude mcp get lceda
+```
+
+只在当前项目启用：
+
+```bash
+claude mcp add --scope project --transport stdio lceda -- npx -y lceda-connect mcp
+```
+
+也可以在项目根目录创建 `.mcp.json`：
 
 ```json
 {
   "mcpServers": {
-    "lceda": { "command": "npx", "args": ["-y", "lceda-connect", "mcp"] }
+    "lceda": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "lceda-connect", "mcp"]
+    }
   }
 }
 ```
 
-全局安装后也可以直接写 `"command": "lceda-mcp"`。`lceda-connect mcp tools` 列出全部工具。约定：
+已有 `.mcp.json` 或客户端指定的 `mcp.json` 时，把 `lceda` 条目合并到原有 `mcpServers` 下，不要覆盖其他服务。文件名和外层结构以客户端要求为准（Claude Code 的项目文件名有前导点）。在 Claude Code 中运行 `/mcp` 检查连接，首次使用项目配置时按提示审查并批准。不要在共享配置里保存 token。
+
+参见 [Claude Code MCP 文档](https://code.claude.com/docs/en/mcp.md)及[配置进阶](docs/quickstart.md)中的 Windows 启动说明。
+
+## MCP 服务
+
+全局安装后也可以直接写 `"command": "lceda-mcp"`。不做全局安装时，等价的独立入口是 `npx --yes --package=lceda-connect -- lceda-mcp`，同样接受 `--toolsets`。工具清单用 `lceda-connect mcp tools`。接口约定：
 
 - 写操作（在编辑器里执行代码、自动布线、建工程、调用外部脚本）默认不执行，要传 `confirm: true`。`cdp_eval` 只放行能确认为只读的表达式（如 `getX` / `listX` 一类查询调用和普通 DOM 读取），其余都要 `confirm: true`；旧参数 `allowSideEffects` 作为弃用别名保留。
 - 返回对象的工具同时给出 `structuredContent`。
@@ -50,9 +144,9 @@ bridge 能在编辑器里执行任意 `eda.*` 代码，所以默认只信任本�
 - 超限结果归档保存完整原文，不自动脱敏，可能含工程数据或凭据。POSIX 新目录/文件以 0700/0600 创建，Windows 继承用户目录 ACL；不要把运行态目录放在共享目录，敏感结果用完后自行清理。
 - 子进程超时或被取消时会清理整棵进程树，每路输出上限 8 MiB。Python 自动探测会跳过 `.bat` / `.cmd` 壳；显式指定批处理文件时，含 shell 元字符的参数会被拒绝。
 
-## 安装
+## 命令行安装
 
-无需安装，直接跑：
+包发布后，无需全局安装也能运行命令：
 
 ```bash
 npx lceda-connect cdp start
@@ -68,7 +162,9 @@ lceda-cdp start
 lceda-bridge status
 ```
 
-## 快速开始
+## Windows：连接 EasyEDA Pro
+
+下面使用全局安装提供的快捷命令。离线解析不需要本节的步骤。
 
 ```bash
 # 1. 带 CDP 端口启动客户端，并等到端点就绪

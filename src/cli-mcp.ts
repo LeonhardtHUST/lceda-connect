@@ -1,4 +1,4 @@
 #!/usr/bin/env node
-import { serveStdio } from "./mcp/server.ts";
+import { main } from "./main.ts";
 
-await serveStdio();
+process.exitCode = await main({ argv: ["mcp", ...process.argv.slice(2)] });

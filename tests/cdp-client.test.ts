@@ -288,12 +288,32 @@ async function startFakeCdp(options: FakeCdpOptions = {}): Promise<FakeCdpServer
     });
   });
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, DEFAULT_CDP_HOST, resolve);
-  });
-  const address = server.address();
-  if (address === null || typeof address === "string") throw new Error("假 CDP 服务没有拿到端口");
-  serverPort = address.port;
+  // Windows 的动态端口也可能命中 Node fetch 的受限端口。测试仍走真实 HTTP，
+  // 只在选到受限端口时换一个端口，不改变生产端的 fetch 行为。
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await new Promise<void>((resolve) => server.listen(0, DEFAULT_CDP_HOST, resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("假 CDP 服务没有拿到端口");
+    serverPort = address.port;
+    try {
+      const response = await fetch(`http://${DEFAULT_CDP_HOST}:${serverPort}/json/version`);
+      await response.arrayBuffer();
+      break;
+    } catch (error) {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      if (
+        attempt === 9 ||
+        !(
+          error instanceof Error &&
+          error.cause instanceof Error &&
+          error.cause.message === "bad port"
+        )
+      ) {
+        throw error;
+      }
+    }
+  }
 
   return {
     port: serverPort,

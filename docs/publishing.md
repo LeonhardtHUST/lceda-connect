@@ -1,0 +1,64 @@
+# npm 发布与自动发布
+
+目标包是 `lceda-connect`，registry 是 `https://registry.npmjs.org/`，源码仓库是 `LeonhardtHUST/lceda-connect`。首次由维护者发布；后续由 GitHub Actions 用 OIDC 发布。
+
+## 1. 检查首次发布的候选包
+
+- 公开分发前，核实[第三方许可说明](../THIRD_PARTY_NOTICES.md)里的待核实材料，尤其是随包进入 `assets/` 的 EasyEDA API skill。不能确认授权时先解决许可或调整分发内容，再重做验收。
+- 发布版本必须来自干净、已审查的 Git 提交；不要把未提交的修改打进包。按 GPL-3.0-only 提供该版本所需的对应源码和构建文件。私有 GitHub 地址本身不能让 npm 包的下载者取得源码；发布前需要另行确保下载者能取得该版本的对应源码。
+- 首发候选可以保留当前的 `0.1.0`。发行时再整理 [CHANGELOG](../CHANGELOG.md) 的待发布条目并记录实际发布日期。
+
+在支持开发工具链的 Node.js 上执行：
+
+```bash
+pnpm install --frozen-lockfile
+pnpm exec vp check
+pnpm exec vp test
+pnpm exec vp pack
+npm pack --ignore-scripts --dry-run --json
+npm pack --ignore-scripts
+node scripts/smoke-npm-package.mjs ./lceda-connect-0.1.0.tgz
+```
+
+确认打包清单中的 `dist`、`assets`、文档和许可属于候选版本，没有凭据、运行态数据或测试工程。冒烟脚本把本地 tarball 安装到新临时目录，禁用安装脚本，再用 npx 做 stdio 握手；安装运行依赖时可能访问 npm registry，但脚本不登录、不发布。版本变化后替换示例文件名。
+
+## 2. 手工首发
+
+仅在许可、源码和包内容都确认后，由维护者在终端登录。不要把密码、token 或验证码贴进对话或提交到仓库。
+
+```bash
+npm login --registry=https://registry.npmjs.org/
+npm whoami --registry=https://registry.npmjs.org/
+npm publish ./lceda-connect-0.1.0.tgz --ignore-scripts --access public --registry=https://registry.npmjs.org/
+npm view lceda-connect@0.1.0 version --registry=https://registry.npmjs.org/
+```
+
+按 npm 提示完成双因素认证。直接发布上一步测试过的 tarball，避免重新打包。如果只执行准备阶段，到这里不要运行 `npm publish`。
+
+## 3. 设置 GitHub 与 npm Trusted Publisher
+
+1. 确认已授权的 [.github/workflows/publish.yml](../.github/workflows/publish.yml) 在 GitHub `master` 上，Actions 已启用。在 GitHub **Settings → Environments** 中创建 `npm-release`，限制为 `master`；保护 `master` 上的发布和 workflow 变更，有条件时配置部署审批人。GitHub 套餐可能限制私有仓库的部分保护规则。
+2. 包首发成功后，打开 npmjs.com → Packages → `lceda-connect` → Settings → Trusted publishing → Add trusted publisher，选择 GitHub Actions。
+
+| npm 字段                  | 值                                                              |
+| ------------------------- | --------------------------------------------------------------- |
+| Organization or user      | `LeonhardtHUST`                                                 |
+| Repository                | `lceda-connect`                                                 |
+| Workflow filename         | `publish.yml`（不加目录）                                       |
+| Environment name          | `npm-release`                                                   |
+| Allowed actions（若显示） | 允许 `npm publish`；只允许 `npm stage publish` 无法运行本工作流 |
+
+3. 在 GitHub **Settings → Secrets and variables → Actions → Variables** 添加仓库变量 `NPM_RELEASE_ENABLED=true`。把候选提交流程准备好后再注册，npm 的新信任连接有首次成功发布时限（官方文档当前为两天）。不要添加 `NPM_TOKEN` 或 `NODE_AUTH_TOKEN` 发布密钥。发布 job 只用 GitHub-hosted runner 的 OIDC；Node 24 自带的 npm 会做 `11.5.1` 下限检查。
+4. 验证首次 OIDC 发布后，按需在 npm 收紧包的 Publishing access，移除不再需要的旧发布 token。公开包从公开仓库发出时，npm 才会自动附加 GitHub Actions provenance；私有仓库不要额外强制 `--provenance`。
+
+参考：[npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers)、[npm provenance](https://docs.npmjs.com/generating-provenance-statements)、[GitHub OIDC](https://docs.github.com/en/actions/concepts/security/openid-connect)。
+
+## 4. 后续发布
+
+例如，首发 `0.1.0` 后，把 `package.json` 和更新日志改到新的稳定版本 `0.1.1`，使落到 `master` 的 HEAD 同时满足以下条件：
+
+- 提交标题正好是 `chore(release): 发布 v0.1.1`。
+- `package.json` 的版本与标题一致，且相对第一父提交严格递增；包名不变。用独立的版本提交，避免合并或变基改掉标题或把版本更新拆到上一提交。
+- npm registry 上该版本不存在。查询错误和重复版本都会阻止发布。
+
+普通 push 只检查意图，不发布。符合条件的提交会跑检查、测试、构建和安装冒烟；开关关闭时也可验证候选包，但不会进入持有 `id-token: write` 的发布 job。启用后只发布已验收的同一个 tarball，下载后会再次校验 SHA-256。审批后在 Actions 看发布结果，再用 `npm view lceda-connect@0.1.1 version --registry=https://registry.npmjs.org/` 核验。GitHub 发布任务串行；等上一版本发布结束再提交下一版本，以免多个待发布任务互相挤占。
