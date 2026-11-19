@@ -17,9 +17,9 @@
 
 ## 分发范围与许可边界
 
-默认 npm 包不包含 `assets/api-docs/`（含 `index.json` 检索索引）和 `assets/skills/easyeda-api/` 的原文，也不包含官方客户端 CLI 的文档副本（`docs/vendor/easyeda-client-cli/`）。这些文件保留在源码仓库和私有历史中，供维护与开发使用；离线检索在本机读取这些原文，不把它们作为发布物再分发。装入 npm 包的用户需要离线 API 文档时，把 `LCEDA_CONNECT_ASSETS` 指向自备的同结构 assets 目录；格式校验使用的 `assets/format/` 等其余资产照常随包发布。
+默认 npm 包不包含 `assets/api-docs/`（含 `index.json` 检索索引）和 `assets/skills/easyeda-api/` 的原文，也不包含官方客户端 CLI 的文档副本（`docs/vendor/easyeda-client-cli/`）。离线检索只读取本机资料。装入 npm 包的用户需要离线 API 文档时，把 `LCEDA_CONNECT_ASSETS` 指向自备的同结构 assets 目录；格式校验使用的 `assets/format/` 等其余资产照常随包发布。
 
-easyeda-api-skill 的上游快照（`002a39d6`）没有独立的 LICENSE 文件，只有 `SKILL.md` 的 front matter 声明 `license: MIT`。这条声明只覆盖它所在的文件，不能据此认定整个上游仓库的文档、素材和脚本都按 MIT 授权。内置 Bridge 服务由该上游的 `scripts/bridge-server.mjs` 移植而来，这部分实现的许可范围仍需核对，不把它记作本项目的独立实现。
+感谢 EasyEDA 的作者与贡献者。本项目的内置 Bridge 服务移植自 [easyeda-api-skill 的 `scripts/bridge-server.mjs`](https://github.com/easyeda/easyeda-api-skill/blob/002a39d6dc55ad138e784c788b5c220b5c191c70/scripts/bridge-server.mjs)，基于提交 `002a39d6`。该快照的 [`SKILL.md`](https://github.com/easyeda/easyeda-api-skill/blob/002a39d6dc55ad138e784c788b5c220b5c191c70/SKILL.md) 在 front matter 中声明 `license: MIT`，但没有独立的 LICENSE 文件；尚未核实这条声明是否也覆盖 Bridge 脚本。
 
 ## 继承的审查方法与文档规则
 

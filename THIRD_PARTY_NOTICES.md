@@ -34,5 +34,5 @@
 ### 发布边界
 
 - 本项目采用 GPL-3.0-only。GPL 不能替代上游授权，也不会自动取得上述材料的再许可权。
-- 按 GPL 发布时，下载者要能取得该版本的对应源码。只给私有仓库地址不够，发布前要确保他们能取得该版本对应的源码。
+- npm 发行版的对应源码和构建文件通过 [GitHub 版本标签](https://github.com/LeonhardtHUST/lceda-connect/tags) 提供。每次发包时，将版本标签固定在实际打包的提交上。
 - 默认 npm 包不含 `assets/api-docs/`、`assets/skills/easyeda-api/` 和官方 CLI 文档副本；`assets/format/` 等随包资产不受影响。候选包尚未发布到 npm，实际状态以 registry 记录为准。

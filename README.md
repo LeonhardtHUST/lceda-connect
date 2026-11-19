@@ -132,7 +132,7 @@ claude mcp add --scope project --transport stdio lceda -- npx -y lceda-connect m
 
 ## 离线 API 文档与 assets
 
-`api` 命令和 `api_*` MCP 工具读取 `assets/api-docs/` 下的索引与原文。这份材料来自 easyeda/easyeda-api-skill，默认 npm 包不收录 `assets/api-docs/` 和 `assets/skills/easyeda-api/`，只保留在源码仓库与私有历史中；官方客户端 CLI 的参考文档也不随包发布。
+`api` 命令和 `api_*` MCP 工具读取 `assets/api-docs/` 下的索引与原文。这份材料来自 easyeda/easyeda-api-skill。npm 包不收录 `assets/api-docs/`、`assets/skills/easyeda-api/` 或官方客户端 CLI 的参考文档。
 
 只安装 npm 包时，API 文档检索没有数据可用：CLI 会提示缺少文档数据，MCP 工具清单按可用数据调整。要用这项能力，把 `LCEDA_CONNECT_ASSETS` 指向自备的 assets 目录，例如源码仓库的 `assets/`，或用自备资料生成同结构目录后运行 `node scripts/build-api-index.ts` 重建索引。格式校验与 `assets/format/` 不受影响。
 
@@ -362,4 +362,4 @@ tests/                   单元与集成测试（vite-plus/test）
 
 ## License
 
-本项目及合并进来的自有内容采用 GPL-3.0-only，全文见 [LICENSE](LICENSE)。外部项目致谢集中在 [CREDITS.md](CREDITS.md)；必要的第三方许可文本与边界见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+本项目及合并进来的自有内容采用 GPL-3.0-only，全文见 [LICENSE](LICENSE)。外部项目致谢集中在 [CREDITS.md](CREDITS.md)；必要的第三方许可文本与边界见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。npm 发行版的对应源码可从 [GitHub 版本标签](https://github.com/LeonhardtHUST/lceda-connect/tags) 下载，标签名与包版本一一对应（例如 `v0.1.0`）。

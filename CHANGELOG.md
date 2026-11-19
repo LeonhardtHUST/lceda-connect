@@ -31,7 +31,7 @@
 - `cdp_eval` 改为保守的只读判定：只有形如 `getX` / `isX` / `hasX` / `listX` / `findX` / `queryX` / `searchX` 的命名空间调用和普通 DOM 读取直接执行，其余都要 `confirm: true`；`allowSideEffects` 保留为弃用别名。
 - 子进程超时或取消时清理整棵进程树，每路输出上限 8 MiB。
 - Python 自动探测跳过 `.bat` / `.cmd` 壳；显式指定批处理解释器时，含 shell 元字符的参数会被拒绝。
-- 默认 npm 包的分发范围：不包含 `assets/api-docs/`（含检索索引）和 `assets/skills/easyeda-api/` 原文，这两处只保留在源码仓库与私有历史中；官方 CLI 文档副本（`docs/vendor/`）本来就不随包发布。只装包时离线 API 文档检索需要 `LCEDA_CONNECT_ASSETS` 指向自备资产，格式校验不受影响。
+- 默认 npm 包的分发范围：不包含 `assets/api-docs/`（含检索索引）和 `assets/skills/easyeda-api/` 原文；官方 CLI 文档副本（`docs/vendor/`）本来就不随包发布。只装包时离线 API 文档检索需要 `LCEDA_CONNECT_ASSETS` 指向自备资产，格式校验不受影响。
 - 更新第三方致谢与许可说明：easyeda-api-skill 快照 `002a39d` 没有独立 LICENSE，只有 `SKILL.md` 的 front matter 声明 MIT，不推广到全仓素材与脚本；内置 Bridge 服务的移植实现许可范围仍待核对。
 - 候选包尚未发布到 npm；版本号与发布 workflow 就绪不代表已经发布，实际状态以 registry 记录为准。
 
@@ -54,7 +54,7 @@
 - MCP stdio 服务（`lceda-mcp`，也可以用 `lceda-connect mcp` 启动），共 51 个工具，分连接、编辑器动词、API 文档、格式、工程文件、仿真、知识文档几组注册。
 - CLI 命令组共 9 个：原有的 `cdp`、`bridge`，新增的 `api`、`format`、`epro2`、`eprj3`、`sim`、`eda`，以及 `mcp`。`cdp`、`bridge` 原有的动作和选项没动。
 - 内置 AI Bridge 服务：`lceda-bridge` 找不到外部 `bridge-server.mjs` 时改用内置版本，端口和字段与源仓库保持一致。
-- `assets/` 随 npm 包发布，包括格式 schema 与图元文档、各技能的 SKILL.md、仿真模型库和 sidecar 脚本；API 参考与 easyeda-api 技能原文只留在源码仓库和私有历史，不随包发布。运行时通过 `new URL(..., import.meta.url)` 定位。
+- `assets/` 随 npm 包发布，包括格式 schema 与图元文档、各技能的 SKILL.md、仿真模型库和 sidecar 脚本；API 参考与 easyeda-api 技能原文不随 npm 包发布。运行时通过 `new URL(..., import.meta.url)` 定位。
 - `.epro2` 工程解析：ZIP 解包（GBK 成员名）、记录归约、库表、原理图连通性、PCB 网表与几何、两版 diff、六段报告。
 - `.eprj3` 记录层：解析与格式化、按 ticket 归约、工程检视、格式门、网表导出。
 - ngspice 仿真：网表与 deck 生成、raw 解析、指标计算、叠层估算。没装 ngspice 时相关用例走跳过分支。
