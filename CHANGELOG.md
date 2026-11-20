@@ -2,6 +2,11 @@
 
 本项目较重要的变更都记在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号按 [语义化版本](https://semver.org/lang/zh-CN/) 走。
 
+## [0.2.0] - 2026-11-20
+
+- 新增实验性的 `cdp input` 和 MCP `cdp_input`，可向指定 PCB 页面派发点击、有限按键和文本。请求需显式确认并通过页面、文档与焦点检查；工具不主动将窗口切到前台，也不调用系统键鼠。已通过模拟回归，真实客户端后台输入仍待验证。
+- 兼容嘉立创 EDA 专业版 4.1.105：启动时不再传入该版本不识别的 `--remote-debugging-address` 参数。
+
 ## [0.1.1] - 2026-11-19
 
 - 更新 npm 安装说明和公开源码链接。此补丁不改运行时代码，用于验证 GitHub Actions 的 npm Trusted Publishing。
