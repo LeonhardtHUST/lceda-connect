@@ -215,6 +215,8 @@ lceda-bridge stop
 - 客户端是单实例的：已有实例时新启动的参数会被转交并丢弃，因此默认拒绝，确需并行要 `--force`（两个实例会争抢同一份数据）。
 - 启动后自动校准 pid：Electron 的启动器进程可能 fork 后退出，pid 文件会被改写成真正持有窗口的主进程。
 
+对已运行的指定 PCB 页面，可用 `cdp input` / MCP `cdp_input` 定向派发点击、按键或文本。它不会自动拉前台，也不回退到系统键鼠。见[使用条件与验收方法](docs/cdp-input.md)。
+
 ### `lceda-bridge <动作>` / `lceda-connect bridge <动作>`
 
 | 动作      | 说明                                                                     |

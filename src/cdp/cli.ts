@@ -27,6 +27,8 @@ import {
 import { activeDocument, listDocuments, openDocument } from "./docs.ts";
 import { asCdpError, CdpError } from "./errors.ts";
 import { EvalUsageError, evaluateInContext, planEval, type EvalContext } from "./eval.ts";
+import { sendCdpInput } from "./input.ts";
+import { cdpInputActionSchema } from "./inputSchema.ts";
 import { pickPage } from "./pickPage.ts";
 import { redact } from "./redact.ts";
 import { screenshotToFile } from "./screenshot.ts";
@@ -37,7 +39,7 @@ import { fetchFrameTree, flattenFrameTree, formatFrameTree, listTargets } from "
 /**
  * `lceda-connect cdp-client <动作>` 的实现（源仓库 lceda_cdp.py 的 CLI 部分）。
  *
- * 动作：discover / targets / frames / eval / shot / docs。
+ * 动作：discover / targets / frames / eval / shot / docs / input。
  * 只连回环地址；`eval` 默认拒绝有副作用的表达式。退出码沿用源仓库口径：
  * 0 成功 / 1 未找到或用法 / 2 端点或选页失败 / 3 拒绝（副作用、非回环）/ 4 协议错误。
  */
@@ -152,7 +154,133 @@ const ALL_OPTIONS: readonly OptionSpec[] = [
   ...DOC_OPTIONS,
 ];
 
-const ACTIONS: readonly string[] = ["discover", "targets", "frames", "eval", "shot", "docs"];
+const ACTIONS: readonly string[] = [
+  "discover",
+  "targets",
+  "frames",
+  "eval",
+  "shot",
+  "docs",
+  "input",
+];
+
+const INPUT_OPTIONS: readonly OptionSpec[] = [
+  {
+    name: "port",
+    type: "string",
+    placeholder: "PORT",
+    description: "本机调试端口（必填，不自动发现）",
+  },
+  { name: "target", type: "string", placeholder: "ID", description: "精确 page target ID（必填）" },
+  {
+    name: "document",
+    type: "string",
+    placeholder: "UUID",
+    description: "当前 PCB 文档 UUID（必填）",
+  },
+  { name: "confirm", type: "boolean", description: "确认派发到指定 PCB 页面，可能改动工程" },
+  { name: "x", type: "string", placeholder: "X", description: "顶层页面视口 CSS 像素坐标" },
+  { name: "y", type: "string", placeholder: "Y", description: "顶层页面视口 CSS 像素坐标" },
+  { name: "button", type: "string", placeholder: "left|right", description: "鼠标键（默认 left）" },
+  { name: "click-count", type: "string", placeholder: "1|2", description: "点击次数（默认 1）" },
+  {
+    name: "key",
+    type: "string",
+    placeholder: "KEY",
+    description: "Escape / Enter / Tab / ArrowUp / ArrowDown / ArrowLeft / ArrowRight / Backspace",
+  },
+  {
+    name: "text",
+    type: "string",
+    placeholder: "TEXT",
+    description: "插入到当前获得焦点的可编辑控件",
+  },
+  { name: "json", type: "boolean", description: "以 JSON 输出" },
+];
+
+const INPUT_ACTION_OPTIONS = {
+  click: ["x", "y", "button", "click-count"],
+  key: ["key"],
+  text: ["text"],
+} as const;
+const INPUT_COMMON = new Set(["port", "target", "document", "confirm", "json"]);
+
+function inputHelp(io: Io): void {
+  io.out(
+    "用法: lceda-connect cdp input <click|key|text> --port PORT --target ID --document UUID --confirm [选项]",
+  );
+  io.out("仅向指定 PCB 页面派发；不会启动客户端、拉前台或使用系统键鼠。响应只确认 CDP 收到事件。");
+  for (const line of formatOptions(INPUT_OPTIONS)) io.out(line);
+}
+
+async function cmdInput(argv: readonly string[], io: Io): Promise<number> {
+  if (argv.length === 0 || argv[0] === "help" || argv[0] === "--help" || argv[0] === "-h") {
+    inputHelp(io);
+    return 0;
+  }
+  let json = false;
+  try {
+    const parsed = parseArgs(argv, INPUT_OPTIONS);
+    json = boolValue(parsed, "json");
+    const kind = parsed.positionals[0];
+    if (
+      parsed.positionals.length !== 1 ||
+      (kind !== "click" && kind !== "key" && kind !== "text")
+    ) {
+      throw new CliUsageError("input 需要且只接受一个动作：click / key / text");
+    }
+    const allowed: readonly string[] = INPUT_ACTION_OPTIONS[kind];
+    for (const flag of Object.keys(parsed.values)) {
+      if (!INPUT_COMMON.has(flag) && !allowed.includes(flag)) {
+        throw new CliUsageError(`input ${kind} 不接受 --${flag}`);
+      }
+    }
+    const port = stringValue(parsed, "port");
+    const target = stringValue(parsed, "target");
+    const documentUuid = stringValue(parsed, "document");
+    if (!port || !/^\d{1,5}$/.test(port) || !target || !documentUuid) {
+      throw new CliUsageError("input 必须显式提供 --port（整数）、--target 和 --document");
+    }
+    const decimal = (name: string): number => {
+      const value = stringValue(parsed, name);
+      return value && /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : NaN;
+    };
+    const count = stringValue(parsed, "click-count");
+    const action = cdpInputActionSchema.safeParse(
+      kind === "click"
+        ? {
+            kind,
+            x: decimal("x"),
+            y: decimal("y"),
+            button: stringValue(parsed, "button"),
+            clickCount:
+              count === undefined ? undefined : count === "1" ? 1 : count === "2" ? 2 : NaN,
+          }
+        : kind === "key"
+          ? { kind, key: stringValue(parsed, "key") }
+          : { kind, text: stringValue(parsed, "text") },
+    );
+    if (!action.success) throw new CliUsageError("input 动作参数不合法；请查看 cdp input --help");
+    const result = await sendCdpInput({
+      port: Number(port),
+      target,
+      documentUuid,
+      confirm: boolValue(parsed, "confirm"),
+      action: action.data,
+    });
+    if (json) emitJson(io, { ok: true, ...result });
+    else io.out(`CDP 已确认 ${result.dispatched} 个事件；请另行回读编辑器操作结果。`);
+    return 0;
+  } catch (error) {
+    return reportError(
+      io,
+      error instanceof CliUsageError
+        ? new CdpError("CDP_INPUT_INVALID", error.message, { exitCode: 1 })
+        : error,
+      json,
+    );
+  }
+}
 
 export function cdpClientHelp(): string[] {
   return [
@@ -168,6 +296,7 @@ export function cdpClientHelp(): string[] {
     "    eval        在页面里执行 JS（默认只读）",
     "    shot        截取当前页面可视区",
     "    docs        文档列表 / 当前文档 / 打开文档",
+    "    input       向指定 PCB 页面派发输入（input --help）",
     "    help        这个帮助",
     "",
     paint.white("  通用选项:"),
@@ -612,6 +741,7 @@ export async function runCdpClientCommand(
   env: NodeJS.ProcessEnv,
 ): Promise<number> {
   const first = argv[0]?.toLowerCase();
+  if (first === "input") return await cmdInput(argv.slice(1), io);
   if (argv.length === 0 || first === "help" || first === "-h" || first === "--help") {
     printHelp(io);
     return 0;

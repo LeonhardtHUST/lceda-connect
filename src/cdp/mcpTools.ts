@@ -20,6 +20,8 @@ import {
 } from "./discover.ts";
 import { activeDocument, listDocuments, openDocument } from "./docs.ts";
 import { evaluateInContext, planEval } from "./eval.ts";
+import { sendCdpInput } from "./input.ts";
+import { cdpInputActionSchema } from "./inputSchema.ts";
 import { redact } from "./redact.ts";
 import { screenshotToFile } from "./screenshot.ts";
 import { classifyEval } from "./sideEffects.ts";
@@ -450,6 +452,34 @@ export const cdpUiStateTool = defineTool({
   },
 });
 
+export const cdpInputTool = defineTool({
+  name: "cdp_input",
+  description:
+    "向本机指定 PCB 页面派发一次鼠标点击、有限按键或文本，不启动客户端或拉前台。" +
+    "仅在编辑器 API 不适用时使用；必须确认并指定端口、精确 target 和当前 PCB UUID。" +
+    "结果仅代表 CDP 确认，须另行回读实际效果；结果不确定时不要自动重试。",
+  input: {
+    port: z.number().int().min(1).max(65535),
+    target: z.string().min(1).max(128).describe("cdp_targets 返回的精确页面 target ID"),
+    documentUuid: z.string().min(1).max(128).describe("预期的当前 PCB 文档 UUID"),
+    action: cdpInputActionSchema,
+    confirm: z.boolean().optional(),
+  },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+  handler: async (args, ctx) => {
+    try {
+      return await sendCdpInput(args, { signal: ctx.signal });
+    } catch (error) {
+      fail(error);
+    }
+  },
+});
+
 function parseScan(value: string | undefined): readonly [number, number] | undefined {
   if (!value) return undefined;
   const range = parsePortRange(value);
@@ -469,4 +499,5 @@ export const cdpTools: ToolDef[] = [
   cdpDocActiveTool,
   cdpDocOpenTool,
   cdpUiStateTool,
+  cdpInputTool,
 ];

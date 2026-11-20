@@ -144,6 +144,7 @@ export function cdpHelp(): string[] {
     "    eval        在编辑器页面里求值（默认拒绝有副作用的表达式）",
     "    shot        截图落盘",
     "    docs        文档列表 / 当前文档 / 打开文档",
+    "    input       向指定 PCB 页面派发输入；见 input --help",
     paint.gray("    （lceda-cdp eval --help 查看这些动作的详细参数）"),
     "",
     paint.white("  选项:"),
@@ -247,6 +248,7 @@ export const CDP_CLIENT_ACTIONS: readonly string[] = [
   "eval",
   "shot",
   "docs",
+  "input",
 ];
 
 /** bridge 命令组里由 bridge 客户端（src/bridge）处理的动作，其余仍归服务管理。 */

@@ -99,7 +99,12 @@ interface FakeCdpOptions {
   ignoreEvaluate?: boolean;
   /** 顶层 UI 探测返回的挂载点。 */
   uiMarkers?: string[];
+  /** 供定向输入走真实回环 HTTP/WS；仍然不运行任何客户端。 */
+  inputMethods?: string[];
 }
+
+const INPUT_TEST_TARGET = "C".repeat(32);
+const INPUT_TEST_DOCUMENT = "1".repeat(32);
 
 interface FakeCdpServer {
   port: number;
@@ -183,13 +188,23 @@ async function startFakeCdp(options: FakeCdpOptions = {}): Promise<FakeCdpServer
       response.setHeader("content-type", "application/json");
       response.end(
         JSON.stringify(
-          FAKE_TARGETS.map((target) => ({
-            ...target,
-            webSocketDebuggerUrl:
-              target.id === "PAGE-1"
-                ? `ws://127.0.0.1:${serverPort}/devtools/page/PAGE-1`
-                : undefined,
-          })),
+          options.inputMethods
+            ? [
+                {
+                  id: INPUT_TEST_TARGET,
+                  type: "page",
+                  title: "Fixture | 嘉立创EDA(专业版) - V4.1.105",
+                  url: "https://client/editor",
+                  webSocketDebuggerUrl: `ws://127.0.0.1:${serverPort}/devtools/page/${INPUT_TEST_TARGET}`,
+                },
+              ]
+            : FAKE_TARGETS.map((target) => ({
+                ...target,
+                webSocketDebuggerUrl:
+                  target.id === "PAGE-1"
+                    ? `ws://127.0.0.1:${serverPort}/devtools/page/PAGE-1`
+                    : undefined,
+              })),
         ),
       );
       return;
@@ -237,6 +252,13 @@ async function startFakeCdp(options: FakeCdpOptions = {}): Promise<FakeCdpServer
           method: string;
           params?: { expression?: string; format?: string };
         };
+        if (options.inputMethods) {
+          options.inputMethods.push(request2.method);
+          const result =
+            request2.method === "Runtime.evaluate" ? { result: { value: { ok: true } } } : {};
+          sendText(JSON.stringify({ id: request2.id, result }));
+          continue;
+        }
         if (request2.method === "Page.enable") {
           sendText(JSON.stringify({ id: request2.id, result: {} }));
           continue;
@@ -1066,9 +1088,99 @@ test("cdp-client CLI：help 与用法错误不连接客户端", async () => {
   expect(badActionIo.errors.join("\n")).toContain("不认识的 cdp-client 动作");
 });
 
+test("cdp input：帮助可用，缺确认及歧义参数在连接前被拒绝", async () => {
+  const helpIo = createMemoryIo();
+  expect(await runCdpClientCommand(["input", "--help"], helpIo, {})).toBe(0);
+  expect(helpIo.lines.join("\n")).toContain("--target");
+  const base = [
+    "input",
+    "key",
+    "--port",
+    "9222",
+    "--target",
+    "PAGE-1",
+    "--document",
+    "1".repeat(32),
+    "--key",
+    "Escape",
+    "--json",
+  ];
+  const confirmIo = createMemoryIo();
+  expect(await runCdpClientCommand(base, confirmIo, {})).not.toBe(0);
+  expect(JSON.parse(confirmIo.lines.join("\n"))).toMatchObject({ error: "CDP_INPUT_CONFIRM" });
+  const wrongIo = createMemoryIo();
+  expect(await runCdpClientCommand([...base, "--x", "12"], wrongIo, {})).toBe(1);
+  expect(JSON.parse(wrongIo.lines.join("\n"))).toMatchObject({ error: "CDP_INPUT_INVALID" });
+});
+
+test("定向输入通过真实回环传输接上 CLI 和 MCP，不激活窗口", async () => {
+  const methods: string[] = [];
+  const fake = await startFakeCdp({ inputMethods: methods });
+  const server = createServer({ tools: cdpTools, env: {} });
+  const client = new Client({ name: "input-client", version: "1.0.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  try {
+    const io = createMemoryIo();
+    expect(
+      await runCdpClientCommand(
+        [
+          "input",
+          "key",
+          "--port",
+          String(fake.port),
+          "--target",
+          INPUT_TEST_TARGET,
+          "--document",
+          INPUT_TEST_DOCUMENT,
+          "--key",
+          "Escape",
+          "--confirm",
+          "--json",
+        ],
+        io,
+        {},
+      ),
+    ).toBe(0);
+    expect(JSON.parse(io.lines.join("\n"))).toMatchObject({
+      ok: true,
+      dispatched: 2,
+      delivery: "protocol-acknowledged",
+    });
+    const keyMethods = [
+      "Runtime.evaluate",
+      "Input.dispatchKeyEvent",
+      "Input.dispatchKeyEvent",
+      "Runtime.evaluate",
+    ];
+    expect(methods).toEqual(keyMethods);
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    const args = {
+      port: fake.port,
+      target: INPUT_TEST_TARGET,
+      documentUuid: INPUT_TEST_DOCUMENT,
+      action: { kind: "key", key: "Escape" },
+    };
+    const denied = await client.callTool({ name: "cdp_input", arguments: args });
+    expect(denied.isError).toBe(true);
+    expect(JSON.stringify(denied.content)).toContain("CDP_INPUT_CONFIRM");
+    expect(methods).toEqual(keyMethods);
+    const accepted = await client.callTool({
+      name: "cdp_input",
+      arguments: { ...args, confirm: true },
+    });
+    expect(accepted.isError).not.toBe(true);
+    expect(JSON.stringify(accepted.content)).toContain("protocol-acknowledged");
+    expect(methods).toEqual([...keyMethods, ...keyMethods]);
+  } finally {
+    await client.close();
+    await server.close();
+    await fake.close();
+  }
+});
+
 // ─── MCP 工具包装 ────────────────────────────────────────────────────
 
-test("cdpTools 导出 8 个工具，名称与参数 schema 完整", () => {
+test("cdpTools 导出 9 个工具，名称与参数 schema 完整", () => {
   expect(cdpTools.map((tool) => tool.name)).toEqual([
     "cdp_discover",
     "cdp_targets",
@@ -1078,11 +1190,16 @@ test("cdpTools 导出 8 个工具，名称与参数 schema 完整", () => {
     "cdp_doc_active",
     "cdp_doc_open",
     "cdp_ui_state",
+    "cdp_input",
   ]);
   for (const tool of cdpTools) {
     expect(tool.description.length).toBeGreaterThan(20);
     expect(Object.keys(tool.input).length).toBeGreaterThan(0);
-    if (tool.name !== "cdp_eval") expect(tool.input).not.toHaveProperty("confirm");
+    if (tool.name === "cdp_eval" || tool.name === "cdp_input") {
+      expect(tool.input).toHaveProperty("confirm");
+    } else {
+      expect(tool.input).not.toHaveProperty("confirm");
+    }
   }
 });
 
