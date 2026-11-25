@@ -132,14 +132,15 @@ N5 若无法在真机构造，记录“未覆盖 + 原因”，并在代码级�
 
 ## 8. 验收结果（弱隔离演练，2026-11-25）
 
-**结论：部分通过。** 安装、详情回读、权限关闭拒绝、卸载已走通；权限开启后的正例与 §4.5 的部分负例仍待补。由于 §4.1 隔离要求未满足，本轮不构成合格验收，也不作为 0.3.0 发布依据。
+**结论：核心链路通过，但不是 §4.1 合格验收。** 弱隔离环境下的安装、回读、权限关闭/开启、卸载均已走通；N1/N2/N3/N6/N7/N8 负例已实测拒绝。§4.1 隔离、N4/N5 与 §4.3 无头探测仍未完成，因此不能作为 0.3.0 发布依据。
 
 - 环境：Windows 11，嘉立创 EDA Pro 4.1.105 中文版；Leon 账户（弱隔离，操作者已接受）；临时工程 `out/acceptance/blink-copy/blink.eprj3`；CDP 端口 19463。
 - 测试包：`lceda-acceptance-probe`，UUID `47fefe57915e855395040b47cda1966a`，版本 `0.0.1`，SHA-256 `a23a91cc89fefb39994256257f08b124c1b346ae78f3b1d26252cb0f0af48999`。
-- 通过：`extension inspect` 离线预检；install 预览（`connected:false`）；`install --confirm` 成功并回读 `installed:true`；UI 显示名称/版本/UUID/已启用；`uninstall --confirm` 成功且 IndexedDB 无残留；权限关闭时 `invoke --ext-uuid` 调用 `sys_WebSocket.register` 被宿主拒绝（错误：未启用扩展和独立脚本的外部交互权限）。
-- 未通过/未覆盖：权限开启后的回显正例（UI 开关需要操作者手动切换；DOM 合成事件未能改变后端状态）；§4.5 的 N1/N2/N5/N6 仅离线或表达式层覆盖，未在本轮真机逐条执行；§4.3 无头只读探测未执行。
+- 通过：`extension inspect` 离线预检；install 预览（`connected:false`）；`install --confirm` 成功并回读 `installed:true`；UI 显示名称/版本/UUID/已启用；权限关闭时以扩展身份调用 `sys_WebSocket.register` 被拒绝；手动开启「允许外部交互」后同一调用成功，本机回显服务收到 `ping` 并回复 `pong:ping`；权限恢复关闭后再次被拒绝；`uninstall --confirm` 成功，IndexedDB 扩展索引与文件均为空。
+- 负例：N1 SHA-256 不匹配（连 CDP 前拒绝）、N2 错误 target（未找到唯一页面）、N3 列表非空时安装（empty 阶段拒绝）、N6 卸载显示名不匹配（details 阶段拒绝）、N7 权限开启时卸载（拒绝，未进入确认）、N8 `--headless`（连 CDP 前拒绝）均已实测。
+- 未完成：N4（搜索框过滤列表）与 N5（安装后回读字段漂移）未构造；§4.3 无头只读探测未执行；§4.1 隔离要求未满足（见第 0 节）。
 - 真机发现并已修复的差异：项目页 URL 的 `tab=*<PCB>@<工程>` 字面量星号；「导入」是含隐藏 `input` 的按钮且 `input` 带 `multiple`；导入后的「安全提示」需要点唯一「确认」；已安装列表需要切换页签强制刷新；「允许外部交互」是隐藏 `input` + 可见 `label`。
-- 证据目录：`out/extension-acceptance/2026-11-25/`（已被 git 忽略）。
+- 证据目录：`out/extension-acceptance/2026-11-25/`（已被 git 忽略）。收尾后测试扩展已卸载，IndexedDB 无残留，回显服务已停止。
 
 ## 9. 已知需要在真机确认的假设
 
