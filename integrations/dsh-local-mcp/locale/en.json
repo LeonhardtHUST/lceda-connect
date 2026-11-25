@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "description": "Connects the local EasyEDA Pro toolkit over stdio. Starts the MCP server only; live EDA tools require a running client.",
+    "title": "lceda-connect MCP"
+  }
+}

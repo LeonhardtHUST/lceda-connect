@@ -1,0 +1,15 @@
+# WSL2（Ubuntu）开发环境：指向本仓库在 WSL 里的本地构建产物。
+# `node` 取自 DSH 启动时的 PATH（fnm 管理即可）；若 DSH 由 systemd 等无 node 的环境启动，
+# 改成 `command -v node` 输出的绝对路径。仓库位置变化时同步修改 args 与 cwd。
+- insert:
+    - id: lceda-connect-local-mcp
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: lceda
+        transport: stdio
+        command: "node"
+        args:
+          - "/mnt/d/projects/github/lceda-connect/dist/cli-mcp.mjs"
+        cwd: "/mnt/d/projects/github/lceda-connect"
+        startupTimeoutMs: 30000
+        failOnStartupError: true

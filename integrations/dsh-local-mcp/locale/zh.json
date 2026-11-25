@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "description": "通过 stdio 接入本机嘉立创 EDA 专业版工具箱。只启动 MCP 服务；实时编辑工具需要另行启动 EDA 客户端。",
+    "title": "lceda-connect MCP"
+  }
+}
