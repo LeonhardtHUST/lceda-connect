@@ -209,6 +209,11 @@ export interface DomainGroup {
  */
 export const DOMAIN_GROUPS: readonly DomainGroup[] = [
   {
+    name: "extension",
+    summary: "预检 .eext；在隔离的可见客户端安装、卸载扩展（实验性，仅 CLI）",
+    load: async () => (await import("./extensions/cli.ts")).runExtensionCommand,
+  },
+  {
     name: "api",
     summary: "离线检索 EasyEDA Pro 扩展 API 文档（search / get）",
     load: async () => (await import("./apidocs/cli.ts")).runApiCommand,

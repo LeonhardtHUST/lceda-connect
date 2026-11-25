@@ -2,17 +2,18 @@
 
 嘉立创EDA专业版（EasyEDA Pro）的 MCP 服务与命令行工具。[npm 包](https://www.npmjs.com/package/lceda-connect)提供本机 stdio 入口，可用 `npx` 启动。它由 9 个仓库合并而来（外部项目致谢见 [CREDITS.md](CREDITS.md)，合并方案见 [docs/merge-plan.md](docs/merge-plan.md)）。
 
-| 命令组   | 做什么                                                                                              |
-| -------- | --------------------------------------------------------------------------------------------------- |
-| `cdp`    | 带调试端口启动客户端并管理实例；连上后可发现端点、列页面、求值、截图、切换文档                      |
-| `bridge` | AI Bridge 服务管理（守护、自动重启、日志、自检），内置服务端；可列窗口、在编辑器里执行 `eda.*` 代码 |
-| `eda`    | 编辑器动词：双通道自检、读板、DRC、板指纹、自动布线、动词台账检索                                   |
-| `api`    | 离线检索扩展 API 文档（422 篇参考，需本地文档数据）                                                 |
-| `format` | 文件格式类型检索、图元字段说明、记录校验、示例                                                      |
-| `epro2`  | 离线解析 `.epro2` 工程：双侧网表、PCB 几何、一致性报告、两版对比                                    |
-| `eprj3`  | 读取与校验 `.eprj3` 文件夹工程、导出网表，调用建工程与门禁脚本                                      |
-| `sim`    | ngspice 仿真：网表生成、运行、raw 解析、指标、叠层估算、Touchstone                                  |
-| `mcp`    | 以 stdio 运行 MCP 服务，上述能力都以 MCP 工具形式提供                                               |
+| 命令组      | 做什么                                                                                              |
+| ----------- | --------------------------------------------------------------------------------------------------- |
+| `cdp`       | 带调试端口启动客户端并管理实例；连上后可发现端点、列页面、求值、截图、切换文档                      |
+| `bridge`    | AI Bridge 服务管理（守护、自动重启、日志、自检），内置服务端；可列窗口、在编辑器里执行 `eda.*` 代码 |
+| `eda`       | 编辑器动词：双通道自检、读板、DRC、板指纹、自动布线、动词台账检索                                   |
+| `extension` | [预检 `.eext`，在隔离的可见客户端安装和卸载](docs/extensions.md)（实验性，仅 CLI）                  |
+| `api`       | 离线检索扩展 API 文档（422 篇参考，需本地文档数据）                                                 |
+| `format`    | 文件格式类型检索、图元字段说明、记录校验、示例                                                      |
+| `epro2`     | 离线解析 `.epro2` 工程：双侧网表、PCB 几何、一致性报告、两版对比                                    |
+| `eprj3`     | 读取与校验 `.eprj3` 文件夹工程、导出网表，调用建工程与门禁脚本                                      |
+| `sim`       | ngspice 仿真：网表生成、运行、raw 解析、指标、叠层估算、Touchstone                                  |
+| `mcp`       | 以 stdio 运行 MCP 服务；扩展安装和卸载仅在 CLI 提供                                                 |
 
 ## Quick Start
 
@@ -330,11 +331,13 @@ lceda-bridge start
 ## 开发
 
 ```bash
-vp install        # 安装依赖
-vp build          # 打包（vp pack，产物在 dist/）
-vp test           # 单元测试
-vp check          # 格式化 + lint + 类型检查
+pnpm install --frozen-lockfile   # 安装依赖
+pnpm build                       # 打包（vp pack，产物在 dist/）
+pnpm test                        # 单元测试
+pnpm check                       # 格式化 + lint + 类型检查
 ```
+
+开发在 WSL2（Ubuntu）下进行；Windows 侧只用于运行嘉立创 EDA 客户端和真机联调。行尾统一为 LF（见 [.gitattributes](.gitattributes)）。
 
 CI（GitHub Actions）在 Windows / Linux × Node 22、24 上跑 check、test、pack 和包体积门禁，另在 Node 20.11 上运行构建产物，并单独用一个 job 跑真实 ngspice。
 
