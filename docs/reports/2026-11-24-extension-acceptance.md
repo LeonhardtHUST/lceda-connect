@@ -6,7 +6,7 @@
 ## 0. 本轮隔离方式（操作者已确认，2026-11-25）
 
 - 方式：**Leon 账户下的弱隔离**，不是独立 OS 用户或虚拟机。操作者明确选择并接受风险；本节如实记录不满足 docs/extensions.md §4.1 的事实。
-- 缓解措施：只打开临时 PCB 副本（`out/acceptance/blink-copy`）；CDP 使用 19463（避开 9222 上的 Chrome 调试实例）。**注意：4.1.105 的渲染进程会把 `--user-data-dir` 改写为 `C:\Users\Leon\AppData\Local\LCEDA-Pro\cache.x64.3`，扩展实际写入日常客户端存储；本轮通过卸载与 IndexedDB 回读确认测试扩展已清除，但隔离性不达标，风险已由操作者明确接受。**
+- 缓解措施：只打开临时 PCB 副本（`out/acceptance/blink-copy`）；CDP 使用 19463（避开 9222 上的 Chrome 调试实例）。**注意：4.1.105 的渲染进程会把 `--user-data-dir` 改写为 `C:\Users\Leon\AppData\Local\LCEDA-Pro\cache.x64.3`；另行尝试覆盖 `LOCALAPPDATA` 启动，子进程仍使用同一路径（`35-localappdata-probe.log`）。扩展实际写入日常客户端存储；本轮通过卸载与 IndexedDB 回读确认测试扩展已清除，但 profile 级隔离不可行，必须使用独立 OS 用户或虚拟机，风险已由操作者明确接受。**
 - 限制：安装/卸载仍写入当前 OS 用户的客户端存储，不能证明日常配置完全不受影响。**本轮结果只作为功能演练与证据，不作为 §4.1 合格验收，也不据此宣布生产可用。**
 
 ## 1.1 启动受控实例（当前实例没有可用 CDP 时）
