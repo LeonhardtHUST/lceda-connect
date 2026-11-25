@@ -127,7 +127,7 @@ lceda-connect extension uninstall --uuid <uuid> --name <manifest name> --display
 
 ### 2.5 当前状态
 
-包预检的实现在 `src/extensions/package.ts`，回归在 `tests/extension-package.test.ts`。界面表达式的模拟回归、CLI 预览与拒绝路径，以及安装/卸载编排的写路径测试（`tests/extension-lifecycle.test.ts`）与历史真机结果是独立证据。2026-11-25 在 4.1.105 上做了**弱隔离演练**（非 §4.1 合格验收，见 `docs/reports/2026-11-24-extension-acceptance.md`）：安装、回读、权限关闭/开启、卸载已走通；§4.5 的 N1/N2/N3/N6/N7/N8 已实测拒绝；N4/N5 与 §4.1 隔离仍未完成（§4.3 无头只读探测已执行）。须在独立环境按第 4 节复验新命令，再考虑扩大使用范围。
+包预检的实现在 `src/extensions/package.ts`，回归在 `tests/extension-package.test.ts`。界面表达式的模拟回归、CLI 预览与拒绝路径，以及安装/卸载编排的写路径测试（`tests/extension-lifecycle.test.ts`）与历史真机结果是独立证据。2026-11-25 在 4.1.105 上做了**弱隔离演练**（非 §4.1 合格验收，见 `docs/reports/2026-11-24-extension-acceptance.md`）：安装、回读、权限关闭/开启、卸载已走通；§4.5 的 N1/N2/N3/N6/N7/N8 已实测拒绝；N5 与 §4.1 隔离仍未完成（N4 已实测拒绝，§4.3 无头只读探测已执行）。须在独立环境按第 4 节复验新命令，再考虑扩大使用范围。
 
 ## 3. 无头边界
 

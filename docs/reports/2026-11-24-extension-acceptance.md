@@ -138,7 +138,7 @@ N5 若无法在真机构造，记录“未覆盖 + 原因”，并在代码级�
 - 测试包：`lceda-acceptance-probe`，UUID `47fefe57915e855395040b47cda1966a`，版本 `0.0.1`，SHA-256 `a23a91cc89fefb39994256257f08b124c1b346ae78f3b1d26252cb0f0af48999`。
 - 通过：`extension inspect` 离线预检；install 预览（`connected:false`）；`install --confirm` 成功并回读 `installed:true`；UI 显示名称/版本/UUID/已启用；权限关闭时以扩展身份调用 `sys_WebSocket.register` 被拒绝；手动开启「允许外部交互」后同一调用成功，本机回显服务收到 `ping` 并回复 `pong:ping`（`23b-permission-on-echo.log`）；权限恢复关闭后再次被拒绝；`uninstall --confirm` 成功，IndexedDB 扩展索引与文件均为空。
 - 负例：N1 SHA-256 不匹配（连 CDP 前拒绝）、N2 错误 target（未找到唯一页面）、N3 列表非空时安装（empty 阶段拒绝）、N6 卸载显示名不匹配（details 阶段拒绝）、N7 权限开启时卸载（拒绝，未进入确认）、N8 `--headless`（连 CDP 前拒绝）均已实测。
-- 未完成：N4（搜索框过滤列表）与 N5（安装后回读字段漂移）未构造；§4.1 隔离要求未满足（见第 0 节）。
+- N4（搜索框过滤列表）已实测拒绝（`34-N4-search-filter.log`）；未完成：N5（安装后回读字段漂移）无法在不注入故障的前提下构造；§4.1 隔离要求未满足（见第 0 节）。
 - §4.3 无头只读探测已执行（`33-headless-probe.log`）：`open --headless` 可创建/关闭隐藏会话，`session list` 显示 `headless:true`，`functions` 返回空数组（隐藏会话不暴露已安装扩展），期间未执行任何写操作。
 - 真机发现并已修复的差异：项目页 URL 的 `tab=*<PCB>@<工程>` 字面量星号；「导入」是含隐藏 `input` 的按钮且 `input` 带 `multiple`；导入后的「安全提示」需要点唯一「确认」；已安装列表需要切换页签强制刷新；「允许外部交互」是隐藏 `input` + 可见 `label`。
 - 证据目录：`out/extension-acceptance/2026-11-25/`（已被 git 忽略）。收尾后测试扩展已卸载，`32-final-db.json` 回读 `extensionsIndex` 与对象存储均为空，回显服务已停止。
