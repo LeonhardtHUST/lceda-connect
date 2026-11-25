@@ -137,8 +137,9 @@ export async function showIdentity() {
   try {
     return await readIdentity();
   } catch (error) {
-    toast(\`\${PROBE} 读取身份失败：\${error?.message ?? error}\`, "error");
-    return null;
+    const message = String(error?.message ?? error);
+    toast(\`\${PROBE} 读取身份失败：\${message}\`, "error");
+    return { error: message };
   }
 }
 
@@ -151,8 +152,11 @@ export function connectEcho() {
       () => eda.sys_WebSocket.send(ECHO_ID, "ping"),
     );
     toast(\`\${PROBE} 已请求连接 127.0.0.1:\${ECHO_PORT}\`, "info");
+    return { requested: true, port: ECHO_PORT };
   } catch (error) {
-    toast(\`\${PROBE} 外部交互被拒绝：\${error?.message ?? error}\`, "warn");
+    const message = String(error?.message ?? error);
+    toast(\`\${PROBE} 外部交互被拒绝：\${message}\`, "warn");
+    return { denied: true, message };
   }
 }
 

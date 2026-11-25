@@ -81,9 +81,11 @@ function fakeSession(replies: unknown[]) {
 const ok = { result: { value: true } };
 const input = { result: { objectId: "handle", subtype: "node" } };
 const details = { result: { value: { enabled: true } } };
+const settleCard = { result: { value: "card" } };
+const settleNotice = { result: { value: "notice" } };
 
 test("install sends exactly one input and reads manager state, not merely CDP success", async () => {
-  const { session, call } = fakeSession([ok, ok, ok, input, {}, ok, ok, details, {}]);
+  const { session, call } = fakeSession([ok, ok, ok, input, {}, settleCard, ok, ok, details, {}]);
   const guard = vi.fn(async () => {});
   await expect(
     new ExtensionManager(session, context, guard).install("staged.eext"),
@@ -93,6 +95,28 @@ test("install sends exactly one input and reads manager state, not merely CDP su
     ["DOM.setFileInputFiles", { objectId: "handle", files: ["staged.eext"] }],
   ]);
   expect(call.mock.calls[3]?.[1]).toMatchObject({ returnByValue: false });
+});
+
+test("install 会点掉 4.1.105 的「安全提示」再回读安装结果", async () => {
+  const { session, call } = fakeSession([
+    ok,
+    ok,
+    ok,
+    input,
+    {},
+    settleNotice,
+    ok,
+    ok,
+    ok,
+    details,
+    {},
+  ]);
+  await expect(
+    new ExtensionManager(session, context, async () => {}).install("staged.eext"),
+  ).resolves.toEqual({ enabled: true });
+  expect(call.mock.calls.filter(([method]) => method === "DOM.setFileInputFiles")).toHaveLength(1);
+  // open/installed/empty/file-input/setFiles/settle/installed/refresh/card/details + releaseObject
+  expect(call).toHaveBeenCalledTimes(11);
 });
 
 test("ambiguous file selection stops; a failed submission attempt is never retried", async () => {
@@ -491,16 +515,18 @@ test("install 提交后详情字段漂移只报告一次提交，不重试", asy
     ok,
     input,
     {},
+    settleCard,
     ok,
     ok,
     { result: { value: { enabled: "yes" } } },
     { exceptionDetails: { text: "详情漂移" } },
+    {},
   ]);
   await expect(
     new ExtensionManager(session, context, async () => {}).install("staged.eext"),
   ).rejects.toThrow(/不要直接重试/);
   expect(call.mock.calls.filter(([method]) => method === "DOM.setFileInputFiles")).toHaveLength(1);
-  expect(call).toHaveBeenCalledTimes(10);
+  expect(call).toHaveBeenCalledTimes(11);
 });
 
 test("install 遇到重复卡片（card 阶段抛错）不重试提交", async () => {
@@ -510,14 +536,14 @@ test("install 遇到重复卡片（card 阶段抛错）不重试提交", async (
     ok,
     input,
     {},
-    ok,
     { exceptionDetails: { text: "card 不唯一" } },
+    {},
   ]);
   await expect(
     new ExtensionManager(session, context, async () => {}).install("staged.eext"),
   ).rejects.toThrow(/不要直接重试/);
   expect(call.mock.calls.filter(([method]) => method === "DOM.setFileInputFiles")).toHaveLength(1);
-  expect(call).toHaveBeenCalledTimes(8);
+  expect(call).toHaveBeenCalledTimes(7);
 });
 
 test("install 在确认前 guard 变化时不发文件", async () => {

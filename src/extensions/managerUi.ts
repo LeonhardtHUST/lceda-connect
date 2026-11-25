@@ -42,7 +42,7 @@
  *   校验；历史 permission_probe 只证实 displayName/uuid，缺标签不判失败；
  * - remove-prompt 的“允许外部交互”开关只在目标详情 scope（配置按钮 parentElement
  *   三次）内查找，不读 manager 其他区域的同名开关；
- * - file-input 拒绝 `multiple` 或 `disabled` 的文件控件；
+ * - file-input 要求唯一接受 .eext 的可见控件且未禁用；4.1.105 的控件带 multiple，只设置一个文件；
  * - 卸载流程拒绝自动确认：进入 remove-prompt 时已有卸载对话框则抛错，
  *   remove-confirm 进入时勾选框已勾选也抛错（只接受本次流程亲手勾选的那一个）。
  */
@@ -57,7 +57,9 @@ export type ManagerStage =
   | "remove-prompt"
   | "remove-confirm"
   | "removed"
-  | "file-input";
+  | "file-input"
+  | "settle"
+  | "refresh";
 
 export interface ManagerContext {
   href: string;
@@ -79,6 +81,8 @@ export const MANAGER_STAGES: readonly ManagerStage[] = [
   "remove-confirm",
   "removed",
   "file-input",
+  "settle",
+  "refresh",
 ];
 
 export class ManagerUiUsageError extends Error {
@@ -123,9 +127,6 @@ function exactText(value: unknown, label: string, maxLength: number): string {
 
 function requireHref(value: unknown): string {
   const href = requiredText(value, "href", 2048);
-  if (href.includes("*")) {
-    throw new ManagerUiUsageError("扩展管理器 UI 上下文：href 不接受通配符");
-  }
   let url: URL;
   try {
     url = new URL(href);
@@ -138,9 +139,14 @@ function requireHref(value: unknown): string {
   if (!url.hostname) {
     throw new ManagerUiUsageError("扩展管理器 UI 上下文：href 缺少主机名");
   }
+  if (url.hostname.includes("*")) {
+    throw new ManagerUiUsageError("扩展管理器 UI 上下文：href 的主机名不接受通配符");
+  }
   if (url.username || url.password) {
     throw new ManagerUiUsageError("扩展管理器 UI 上下文：href 不接受内嵌凭据");
   }
+  // 4.1.105 项目页的 hash 带 `tab=*<PCB>@<工程>`；星号是 EDA 的字面量语法，
+  // 该 href 只用于和 location.href 精确比较，不做通配匹配，因此允许出现在路径/查询/hash。
   return href;
 }
 
@@ -227,6 +233,13 @@ const PRELUDE = String.raw`
   const __mgrText = (el) => String(el.textContent == null ? '' : el.textContent).trim();
   const __mgrFind = (text, root = document) => Array.prototype.slice.call(root.querySelectorAll('span,div,p,button'))
     .filter((el) => !el.childElementCount && __mgrVisible(el) && __mgrText(el) === text);
+  // 4.1.105 的「导入」是一个带隐藏 input 子元素的 button，因此不能用 leaf-only 的 __mgrFind。
+  // 优先按 button 的文本匹配；没有 button 时退回 leaf 匹配，兼容测试与旧界面。
+  const __mgrAction = (text, root = document) => {
+    const buttons = Array.prototype.slice.call(root.querySelectorAll('button'))
+      .filter((el) => __mgrVisible(el) && __mgrText(el) === text);
+    return buttons.length > 0 ? buttons : __mgrFind(text, root);
+  };
   const __mgrEmptyMarkers = (manager) => __mgrFind('暂无数据', manager).concat(__mgrFind('暂无数据。', manager));
   const __mgrOne = (list, label) => {
     if (list.length !== 1) __mgrFail(label + ' 必须唯一可见，实际 ' + list.length);
@@ -309,7 +322,7 @@ const PRELUDE = String.raw`
     .filter((el) => !el.childElementCount && __mgrVisible(el) && /^V[0-9]+\.[0-9]+/.test(__mgrText(el)));
   const __mgrListReady = (manager) => {
     if (__mgrFind('已安装', manager).length !== 1) return false;
-    if (__mgrFind('导入', manager).length !== 1) return false;
+    if (__mgrAction('导入', manager).length !== 1) return false;
     if (__mgrEmptyMarkers(manager).length === 1) return true;
     if (__mgrFind(__MGR_DISPLAY_NAME, manager).length > 0) return true;
     return __mgrVersionMarkers(manager).length > 0;
@@ -353,10 +366,10 @@ const PRELUDE = String.raw`
     if (__mgrVersionMarkers(manager).length !== 0) return false;
     if (__mgrSearchValue(manager) !== null) return false;
     const permission = __mgrPermissionBox(manager);
-    if (permission && __mgrVisible(permission)) return false;
+    if (permission && __mgrPermissionVisible(permission)) return false;
     if (__mgrEmptyMarkers(manager).length !== 1) return false;
     if (__mgrFind('已安装', manager).length !== 1) return false;
-    if (__mgrFind('导入', manager).length !== 1) return false;
+    if (__mgrAction('导入', manager).length !== 1) return false;
     return true;
   };
   const __mgrPermissionBox = (root) => {
@@ -365,6 +378,13 @@ const PRELUDE = String.raw`
     if (boxes.length === 0) return null;
     if (boxes.length > 1) __mgrFail('允许外部交互开关不唯一');
     return boxes[0];
+  };
+  // 4.1.105 用自定义开关：input 本身 opacity:0，可见的是它的 label。
+  const __mgrPermissionVisible = (box) => {
+    if (__mgrVisible(box)) return true;
+    let label = box;
+    while (label && label.tagName !== 'LABEL') label = label.parentElement;
+    return !!(label && __mgrVisible(label));
   };
   const __mgrDialog = () => {
     const instructions = __mgrFind(__MGR_INSTRUCTION);
@@ -501,7 +521,7 @@ function bodyFor(stage: ManagerStage): string {
   const permission = __mgrPermissionBox(details.scope);
   if (!permission) __mgrFail('目标配置面板没有出现「允许外部交互」开关');
   if (permission.checked) __mgrFail('「允许外部交互」仍开启，拒绝卸载；请手动关闭权限后重试');
-  if (!__mgrVisible(permission)) __mgrFail('「允许外部交互」开关不可见，拒绝卸载');
+  if (!__mgrPermissionVisible(permission)) __mgrFail('「允许外部交互」开关不可见，拒绝卸载');
   if (__mgrFind(__MGR_INSTRUCTION).length !== 0) __mgrFail('已有卸载确认对话框，拒绝自动确认');
   const uninstall = __mgrOne(__mgrFind('卸载', details.scope), '卸载 按钮');
   if (!__mgrClickable(uninstall)) __mgrFail('卸载按钮不可点击');
@@ -554,11 +574,49 @@ function bodyFor(stage: ManagerStage): string {
   if (!__mgrListReady(manager)) return false;
   if (__mgrDetails(manager) !== null) return false;
   const permission = __mgrPermissionBox(manager);
-  if (permission && __mgrVisible(permission)) return false;
+  if (permission && __mgrPermissionVisible(permission)) return false;
   const row = __mgrFind(__MGR_DISPLAY_NAME, manager).length !== 0;
   const uuid = __mgrFind('UUID', manager).length !== 0 || __mgrHasUuidLine(manager);
   const prompt = __mgrFind(__MGR_INSTRUCTION).length !== 0;
   return !row && !uuid && !prompt;`;
+    case "refresh":
+      return String.raw`
+  __mgrGuard();
+  const manager = __mgrRequireManager('刷新已安装列表');
+  const market = __mgrFind('扩展广场', manager);
+  if (market.length !== 1) __mgrFail('扩展广场页签不唯一');
+  market[0].click();
+  await __mgrSleep(300);
+  __mgrGuard();
+  const installedTab = __mgrFind('已安装', manager);
+  if (installedTab.length !== 1) __mgrFail('已安装页签不唯一');
+  installedTab[0].click();
+  await __mgrSleep(400);
+  __mgrGuard();
+  return true;`;
+    case "settle":
+      return String.raw`
+  __mgrGuard();
+  const titles = __mgrFind('安全提示');
+  if (titles.length > 1) __mgrFail('安全提示不唯一');
+  if (titles.length === 1) {
+    const confirms = __mgrFind('确认');
+    if (confirms.length !== 1) __mgrFail('安全提示确认按钮不唯一');
+    if (!__mgrClickable(confirms[0])) __mgrFail('安全提示确认按钮不可点击');
+    confirms[0].click();
+    return 'notice';
+  }
+  const manager = __mgrManager();
+  if (!manager) return false;
+  if (__mgrDetails(manager) !== null) return 'card';
+  if (__mgrSearchValue(manager) !== null) return false;
+  if (!__mgrListReady(manager)) return false;
+  const cards = __mgrFind(__MGR_DISPLAY_NAME, manager);
+  if (cards.length === 1 && __mgrClickable(cards[0])) {
+    cards[0].click();
+    return 'card';
+  }
+  return false;`;
     case "file-input":
       return String.raw`
   __mgrGuard();
@@ -569,7 +627,8 @@ function bodyFor(stage: ManagerStage): string {
   const inputs = Array.prototype.slice.call(manager.querySelectorAll('input[type=file]'))
     .filter((el) => String(el.getAttribute('accept') || '').toLowerCase().indexOf('.eext') !== -1);
   const input = __mgrOne(inputs, '扩展包文件控件');
-  if (input.multiple === true) __mgrFail('扩展包文件控件允许多选，拒绝');
+  // 4.1.105 的导入控件带 multiple；DOM.setFileInputFiles 只设置一个文件，
+  // 因此允许多选属性，但仍要求它是唯一接受 .eext 的可见控件。
   if (input.disabled === true) __mgrFail('扩展包文件控件不可用，拒绝');
   if (__mgrFind(__MGR_DISPLAY_NAME, manager).length !== 0) __mgrFail('管理器已显示同名扩展，拒绝覆盖导入');
   if (!__mgrEmptyState(manager)) __mgrFail('已安装列表不为空（需显示「暂无数据」），拒绝选择扩展包');

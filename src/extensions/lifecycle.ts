@@ -144,7 +144,16 @@ export class ExtensionManager {
     try {
       // Do not resend the mutation, even if the transport reports an error.
       await this.session.call("DOM.setFileInputFiles", { objectId: id, files: [stageFile] });
-      await this.require("installed");
+      const settled = await this.waitFor(
+        "settle",
+        (value) => value === "notice" || value === "card",
+      );
+      if (settled === "notice") {
+        await sleep(300);
+        await this.require("installed");
+      }
+      // 4.1.105 的已安装列表不会在导入后自动刷新；切换页签强制重新读取。
+      await this.require("refresh");
       await this.waitFor("card", (value) => value === true);
       return await this.details();
     } catch (error) {

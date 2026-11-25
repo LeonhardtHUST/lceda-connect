@@ -398,6 +398,14 @@ test("上下文只接受精确 http(s) 编辑器页、精确 UUID 与安全名�
   expect(expressionText).not.toContain("eval(");
 });
 
+test("href 允许 4.1.105 tab 参数里的字面量星号，仍按精确字符串比较", () => {
+  const href =
+    "https://client/editor?cll=warn#id=7f0248198c8ebc5c911f881c6b82692dbe53ae245551ab2f6514945cc48f62f9,prjPath=D%3A%5CProjects%2Fblink.eprj3,tab=*5d15c469efa6e1b1@7f0248198c8ebc5c911f881c6b82692dbe53ae245551ab2f6514945cc48f62f9";
+  const text = expression("open", { ...CTX, href });
+  expect(text).toContain(JSON.stringify(href));
+  expect(text).toContain("String(location.href) !== __MGR_HREF");
+});
+
 test("每个阶段在任何 href/title/document 漂移时都先失败且不点击", async () => {
   for (const stage of MANAGER_STAGES) {
     const shell = makeShell();
@@ -911,6 +919,16 @@ test("旧搜索值不参与负向回读", async () => {
   await expect(run(expression("empty"), cleared.dom)).resolves.toBe(true);
 });
 
+test("refresh 先切到扩展广场再切回已安装，强制重读列表", async () => {
+  const shell = makeShell();
+  const list = addInstalledList(shell.manager, { empty: true });
+  const market = new FakeElement("span", "扩展广场");
+  shell.manager.add(market);
+  await expect(run(expression("refresh"), shell.dom)).resolves.toBe(true);
+  expect(market.clicks).toBe(1);
+  expect(list.tab.clicks).toBeGreaterThanOrEqual(1);
+});
+
 test("file-input 返回实际 input 对象，并在同一 eval 内复用 empty 判定", async () => {
   const shell = makeShell();
   const list = addInstalledList(shell.manager, { empty: true });
@@ -931,13 +949,23 @@ test("file-input 返回实际 input 对象，并在同一 eval 内复用 empty �
   addInstalledList(multiple.manager, { empty: true });
   const multipleInput = addFileInput(multiple.manager);
   multipleInput.multiple = true;
-  await expect(run(expression("file-input"), multiple.dom)).rejects.toThrow(/多选/);
+  await expect(run(expression("file-input"), multiple.dom)).resolves.toBe(multipleInput);
 
   const disabled = makeShell();
   addInstalledList(disabled.manager, { empty: true });
   const disabledInput = addFileInput(disabled.manager);
   disabledInput.disabled = true;
   await expect(run(expression("file-input"), disabled.dom)).rejects.toThrow(/不可用/);
+
+  // 4.1.105 实机结构：导入是一个含隐藏 input 的 button，input 带 multiple。
+  const realShape = makeShell();
+  addInstalledList(realShape.manager, { empty: true, importText: null });
+  const importButton = new FakeElement("button", "导入", { "data-test": "Import" });
+  const realInput = addFileInput(importButton);
+  realInput.multiple = true;
+  realShape.manager.add(importButton);
+  await expect(run(expression("file-input"), realShape.dom)).resolves.toBe(realInput);
+  expect(importButton.clicks).toBe(0);
 
   const duplicate = makeShell();
   addInstalledList(duplicate.manager, { empty: true });
