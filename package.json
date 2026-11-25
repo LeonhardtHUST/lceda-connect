@@ -1,6 +1,6 @@
 {
   "name": "lceda-connect",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "嘉立创EDA专业版 (EasyEDA Pro) 一体化工具箱：MCP 服务 + CLI，覆盖 CDP/AI Bridge 连接、工程文件解析、格式校验、API 文档检索与 ngspice 仿真。",
   "keywords": [
     "ai-bridge",

@@ -2,9 +2,11 @@
 
 本项目较重要的变更都记在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号按 [语义化版本](https://semver.org/lang/zh-CN/) 走。
 
-## 未发布
+## [0.3.0] - 2026-11-25
 
-- 新增 `extension inspect` 离线预检，以及 Windows 嘉立创 EDA 专业版 4.1.105 中文界面的实验性安装、卸载命令。写操作必须确认并使用隔离客户端；尚未完成新命令的真机验收，不支持无头安装或卸载。
+- 新增 `extension inspect` 离线预检，以及 Windows 嘉立创 EDA 专业版 4.1.105 中文界面的实验性安装、卸载命令；写操作须 `--confirm` 与 `--isolated-profile`，拒绝 `--headless`。
+- 已在 4.1.105 的弱隔离环境中完成安装/回读、权限关闭与开启、卸载及 N1–N8 负例演练；独立操作系统用户或虚拟机的 §4.1 验收仍未完成，保持“实验性”定位。
+- 仓库新增 DeepSeek Harness 的 WSL 本地 MCP 集成（`integrations/dsh-local-mcp`，不随 npm 包发布）。
 
 ## [0.2.0] - 2026-11-20
 
