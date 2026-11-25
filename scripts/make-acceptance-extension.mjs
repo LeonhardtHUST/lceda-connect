@@ -16,7 +16,8 @@ import path from "node:path";
 
 const NAME_RE = /^[a-z0-9_-]{5,30}$/u;
 const UUID_RE = /^[0-9a-f]{32}$/u;
-const VERSION_RE = /^\d+\.\d+\.\d+$/u;
+const VERSION_RE =
+  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const PORT_RE = /^\d{1,5}$/u;
 
 const CRC_TABLE = (() => {
@@ -206,6 +207,7 @@ function usage() {
     "  --uuid <32位hex>   扩展 UUID（默认随机生成）",
     "  --name <名称>      机器名，5-30 位小写字母/数字/下划线/连字符（默认 lceda-acceptance-probe）",
     "  --display-name <显示名>（默认 LCEDA Acceptance Probe）",
+    "  --version <版本>   扩展版本（默认 0.0.1；支持 prerelease/build）",
     "  --echo-port <端口> 回显 WebSocket 端口（默认 49631）",
   ].join("\n");
 }
@@ -219,7 +221,7 @@ async function main() {
   const name = pick(args, "name", "lceda-acceptance-probe");
   const uuid = pick(args, "uuid", randomBytes(16).toString("hex"));
   const displayName = pick(args, "display-name", "LCEDA Acceptance Probe");
-  const version = "0.0.1";
+  const version = pick(args, "version", "0.0.1");
   const echoPort = pick(args, "echo-port", "49631");
   const output = path.resolve(pick(args, "out", path.join("out", "acceptance", `${name}.eext`)));
 
