@@ -349,12 +349,13 @@ src/
   main.ts                命令组分发与帮助
   commands/              cdp 启动器、bridge 服务管理
   core/                  配置、进程、网络探测、日志、参数解析、assets 定位
+  extensions/            .eext 预检、扩展管理器 UI 驱动、安装/卸载编排
   mcp/                   MCP 服务、工具注册表、结果截断
   cdp/ bridge/ eda/      编辑器连接与动词
   apidocs/ format/       API 文档检索、格式校验
   epro2/ eprj3/ sim/     工程文件解析、ngspice 仿真
 assets/                  知识文档、Schema、API 参考与 sidecar 脚本；API 参考与 easyeda-api 技能原文默认不随 npm 包发布
-docs/                    合并方案、eprj3 文档、官方 CLI 参考
+docs/                    合并方案、扩展与 eprj3 文档、官方 CLI 参考
 tests/                   单元与集成测试（vite-plus/test）
 ```
 
