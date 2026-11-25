@@ -19,6 +19,8 @@
  * | remove-confirm  | true（已点“确认”）；对话框/勾选/绑定未就绪抛错              |
  * | removed         | true=列表就绪且条目与卸载提示都消失；否则 false             |
  * | file-input      | 实际的 input DOM 对象（必须 returnByValue:false 取 objectId） |
+ * | settle          | 'notice'=已点安全提示确认；'card'=卡片已选中或详情已打开；false=都未出现 |
+ * | refresh         | true=切回“已安装”且列表就绪；失败抛错                         |
  *
  * 所有表达式在开头、每次 await 之后、每次点击之前都会重新执行同一组硬前置：
  * `location.href` 精确相等、`document.title` 精确相等、`document` 可见。表达式内
@@ -582,17 +584,20 @@ function bodyFor(stage: ManagerStage): string {
     case "refresh":
       return String.raw`
   __mgrGuard();
-  const manager = __mgrRequireManager('刷新已安装列表');
+  let manager = __mgrRequireManager('刷新已安装列表');
   const market = __mgrFind('扩展广场', manager);
   if (market.length !== 1) __mgrFail('扩展广场页签不唯一');
   market[0].click();
   await __mgrSleep(300);
   __mgrGuard();
+  manager = __mgrRequireManager('刷新已安装列表');
   const installedTab = __mgrFind('已安装', manager);
   if (installedTab.length !== 1) __mgrFail('已安装页签不唯一');
   installedTab[0].click();
   await __mgrSleep(400);
   __mgrGuard();
+  manager = __mgrRequireManager('刷新已安装列表');
+  if (!__mgrListReady(manager)) __mgrFail('刷新后已安装列表未就绪');
   return true;`;
     case "settle":
       return String.raw`
@@ -600,10 +605,24 @@ function bodyFor(stage: ManagerStage): string {
   const titles = __mgrFind('安全提示');
   if (titles.length > 1) __mgrFail('安全提示不唯一');
   if (titles.length === 1) {
-    const confirms = __mgrFind('确认');
-    if (confirms.length !== 1) __mgrFail('安全提示确认按钮不唯一');
-    if (!__mgrClickable(confirms[0])) __mgrFail('安全提示确认按钮不可点击');
-    confirms[0].click();
+    const title = __mgrOne(titles, '安全提示');
+    let scope = title.parentElement;
+    while (scope && scope !== document.body) {
+      const found = __mgrFind('确认', scope);
+      if (found.length === 1) break;
+      if (found.length > 1) __mgrFail('安全提示确认按钮不唯一');
+      scope = scope.parentElement;
+    }
+    if (!scope || scope === document.body || !__mgrVisible(scope)) {
+      __mgrFail('安全提示作用域不可见');
+    }
+    const lines = __mgrLines(scope);
+    if (!lines.some((line) => line.indexOf('当前安装的扩展已调用') === 0)) {
+      __mgrFail('安全提示正文不匹配');
+    }
+    const confirm = __mgrFind('确认', scope)[0];
+    if (!confirm || !__mgrClickable(confirm)) __mgrFail('安全提示确认按钮不可点击');
+    confirm.click();
     return 'notice';
   }
   const manager = __mgrManager();

@@ -529,7 +529,7 @@ test("install 提交后详情字段漂移只报告一次提交，不重试", asy
   expect(call).toHaveBeenCalledTimes(11);
 });
 
-test("install 遇到重复卡片（card 阶段抛错）不重试提交", async () => {
+test("install 在 settle 阶段异常时不重试提交", async () => {
   const { session, call } = fakeSession([
     ok,
     ok,
@@ -544,6 +544,25 @@ test("install 遇到重复卡片（card 阶段抛错）不重试提交", async (
   ).rejects.toThrow(/不要直接重试/);
   expect(call.mock.calls.filter(([method]) => method === "DOM.setFileInputFiles")).toHaveLength(1);
   expect(call).toHaveBeenCalledTimes(7);
+});
+
+test("install 在 card 阶段异常时不重试提交", async () => {
+  const { session, call } = fakeSession([
+    ok,
+    ok,
+    ok,
+    input,
+    {},
+    settleCard,
+    ok,
+    { exceptionDetails: { text: "card 抛错" } },
+    {},
+  ]);
+  await expect(
+    new ExtensionManager(session, context, async () => {}).install("staged.eext"),
+  ).rejects.toThrow(/不要直接重试/);
+  expect(call.mock.calls.filter(([method]) => method === "DOM.setFileInputFiles")).toHaveLength(1);
+  expect(call).toHaveBeenCalledTimes(9);
 });
 
 test("install 在确认前 guard 变化时不发文件", async () => {

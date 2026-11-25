@@ -919,6 +919,41 @@ test("旧搜索值不参与负向回读", async () => {
   await expect(run(expression("empty"), cleared.dom)).resolves.toBe(true);
 });
 
+test("settle 只点安全提示作用域内的唯一确认，并校验正文", async () => {
+  const shell = makeShell();
+  const notice = new FakeElement("div");
+  const title = new FakeElement("span", "安全提示");
+  const body = new FakeElement("div", "当前安装的扩展已调用联网、本地文件存取等外部交互接口");
+  const confirm = new FakeElement("button", "确认");
+  notice.add(title, body, confirm);
+  shell.dom.body.add(notice);
+  await expect(run(expression("settle"), shell.dom)).resolves.toBe("notice");
+  expect(confirm.clicks).toBe(1);
+
+  const outside = makeShell();
+  const notice2 = new FakeElement("div");
+  notice2.add(
+    new FakeElement("span", "安全提示"),
+    new FakeElement("div", "当前安装的扩展已调用联网与本地文件存取"),
+  );
+  outside.dom.body.add(notice2, new FakeElement("button", "确认"));
+  await expect(run(expression("settle"), outside.dom)).rejects.toThrow(/作用域/);
+
+  const wrongBody = makeShell();
+  const notice3 = new FakeElement("div");
+  notice3.add(
+    new FakeElement("span", "安全提示"),
+    new FakeElement("div", "别的提示"),
+    new FakeElement("button", "确认"),
+  );
+  wrongBody.dom.body.add(notice3);
+  await expect(run(expression("settle"), wrongBody.dom)).rejects.toThrow(/正文/);
+
+  const empty = makeShell();
+  addInstalledList(empty.manager, { empty: true });
+  await expect(run(expression("settle"), empty.dom)).resolves.toBe(false);
+});
+
 test("refresh 先切到扩展广场再切回已安装，强制重读列表", async () => {
   const shell = makeShell();
   const list = addInstalledList(shell.manager, { empty: true });
