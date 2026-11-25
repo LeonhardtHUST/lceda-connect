@@ -1,6 +1,6 @@
 # 扩展安装/卸载真机验收记录（2026-11-24）
 
-状态：**待执行**。本文件是 [docs/extensions.md](../extensions.md) 第 4 节的执行清单，不是验收结论。
+状态：**弱隔离演练已执行核心链路（见第 8 节）；§4.1 合格验收未完成。** 本文件是 [docs/extensions.md](../extensions.md) 第 4 节的执行清单。
 执行前必须满足隔离前提并取得操作者逐次授权；通过后把结果与证据路径补到文末“验收结果”。
 
 ## 0. 本轮隔离方式（操作者已确认，2026-11-25）
@@ -37,7 +37,7 @@ Get-NetTCPConnection -LocalPort 19463 -State Listen
 | 扩展列表 | 「已安装」列表为空；不覆盖任何已有扩展                                                               |
 | 账号     | 不登录生产账号；需要登录时由操作者使用测试账号完成                                                   |
 | 授权     | 每一次安装/卸载写操作前单独授权；`--confirm` 只是预览后同意执行，不是授权                            |
-| 证据     | 命令输出、界面截图、列表回读统一存到 `out/extension-acceptance/2026-11-24/`（已被 git 忽略，不提交） |
+| 证据     | 命令输出、界面截图、列表回读统一存到 `out/extension-acceptance/2026-11-25/`（已被 git 忽略，不提交） |
 
 命令约定（在 Windows PowerShell 中执行；WSL 里只能用 Windows 版 node 调用，因为写命令要求 `process.platform === "win32"`）：
 
@@ -136,16 +136,16 @@ N5 若无法在真机构造，记录“未覆盖 + 原因”，并在代码级�
 
 - 环境：Windows 11，嘉立创 EDA Pro 4.1.105 中文版；Leon 账户（弱隔离，操作者已接受）；临时工程 `out/acceptance/blink-copy/blink.eprj3`；CDP 端口 19463。
 - 测试包：`lceda-acceptance-probe`，UUID `47fefe57915e855395040b47cda1966a`，版本 `0.0.1`，SHA-256 `a23a91cc89fefb39994256257f08b124c1b346ae78f3b1d26252cb0f0af48999`。
-- 通过：`extension inspect` 离线预检；install 预览（`connected:false`）；`install --confirm` 成功并回读 `installed:true`；UI 显示名称/版本/UUID/已启用；权限关闭时以扩展身份调用 `sys_WebSocket.register` 被拒绝；手动开启「允许外部交互」后同一调用成功，本机回显服务收到 `ping` 并回复 `pong:ping`；权限恢复关闭后再次被拒绝；`uninstall --confirm` 成功，IndexedDB 扩展索引与文件均为空。
+- 通过：`extension inspect` 离线预检；install 预览（`connected:false`）；`install --confirm` 成功并回读 `installed:true`；UI 显示名称/版本/UUID/已启用；权限关闭时以扩展身份调用 `sys_WebSocket.register` 被拒绝；手动开启「允许外部交互」后同一调用成功，本机回显服务收到 `ping` 并回复 `pong:ping`（`23b-permission-on-echo.log`）；权限恢复关闭后再次被拒绝；`uninstall --confirm` 成功，IndexedDB 扩展索引与文件均为空。
 - 负例：N1 SHA-256 不匹配（连 CDP 前拒绝）、N2 错误 target（未找到唯一页面）、N3 列表非空时安装（empty 阶段拒绝）、N6 卸载显示名不匹配（details 阶段拒绝）、N7 权限开启时卸载（拒绝，未进入确认）、N8 `--headless`（连 CDP 前拒绝）均已实测。
 - 未完成：N4（搜索框过滤列表）与 N5（安装后回读字段漂移）未构造；§4.3 无头只读探测未执行；§4.1 隔离要求未满足（见第 0 节）。
 - 真机发现并已修复的差异：项目页 URL 的 `tab=*<PCB>@<工程>` 字面量星号；「导入」是含隐藏 `input` 的按钮且 `input` 带 `multiple`；导入后的「安全提示」需要点唯一「确认」；已安装列表需要切换页签强制刷新；「允许外部交互」是隐藏 `input` + 可见 `label`。
-- 证据目录：`out/extension-acceptance/2026-11-25/`（已被 git 忽略）。收尾后测试扩展已卸载，IndexedDB 无残留，回显服务已停止。
+- 证据目录：`out/extension-acceptance/2026-11-25/`（已被 git 忽略）。收尾后测试扩展已卸载，`32-final-db.json` 回读 `extensionsIndex` 与对象存储均为空，回显服务已停止。
 
 ## 9. 已知需要在真机确认的假设
 
-- 入口 `./dist/index` 的解析方式、菜单 `registerFn` 的导出形态；
-- 扩展管理器根/详情/对话框的 DOM 作用域与 `data-test` 选择器在 4.1.105 中文版是否稳定；
-- `sys_WebSocket.register` 在权限关闭时抛错、开启时成功；
-- `DOM.setFileInputFiles` 是否需要先 `DOM.enable`，临时文件是否会在导入完成前被清理；
-- 4.1.105 之外版本是否按设计 fail-closed（标题/版本硬编码）。
+- 入口 `./dist/index` 的解析方式、菜单 `registerFn` 的导出形态：本轮未通过扩展菜单触发，仍待确认；CLI 以扩展身份执行同类 API 已成功。
+- 扩展管理器根/详情/对话框的 DOM 作用域与 `data-test` 选择器在 4.1.105 中文版是否稳定：已在弱隔离演练中确认可用。
+- `sys_WebSocket.register` 在权限关闭时抛错、开启时成功：已确认（拒绝错误 + 回显 `ping`/`pong`）。
+- `DOM.setFileInputFiles` 是否需要先 `DOM.enable`：本轮不需要；临时文件是否会在导入完成前被清理，未单独验证。
+- 4.1.105 之外版本是否按设计 fail-closed：未验证。
