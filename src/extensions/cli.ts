@@ -42,7 +42,7 @@ function strictHex(value: string, pattern: RegExp, flag: string): string {
 }
 
 /** Only hand off the bytes whose digest the operator confirmed, not the mutable input path. */
-async function withStagedPackage<T>(
+export async function withStagedPackage<T>(
   file: string,
   sha256: string,
   run: (staged: string) => Promise<T>,

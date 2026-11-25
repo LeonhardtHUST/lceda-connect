@@ -75,6 +75,17 @@ interface UiConnection {
   call<T>(method: string, params?: Record<string, unknown>): Promise<T>;
 }
 
+/**
+ * 测试接缝：只替换传输/探测的取得方式，不改变发现、绑定、guard 与关闭语义。
+ * 不传时与生产行为完全一致（回环 HTTP 列表、CdpSession、UI 探测、身份回读）。
+ */
+export interface ExtensionManagerHooks {
+  fetch?: (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
+  connect?: (wsUrl: string, options: { timeoutMs: number }) => Promise<CdpSession>;
+  probe?: (session: CdpSession) => Promise<{ href?: string }>;
+  evaluate?: (session: CdpSession, expression: string) => Promise<{ value?: unknown }>;
+}
+
 interface Evaluation {
   exceptionDetails?: { exception?: { description?: string }; text?: string };
   result?: { value?: unknown; objectId?: string; subtype?: string };
@@ -180,12 +191,22 @@ export async function withExtensionManager<T>(
   window: WindowIdentity,
   identity: ExtensionIdentity,
   action: (manager: ExtensionManager) => Promise<T>,
+  hooks: ExtensionManagerHooks = {},
 ): Promise<T> {
-  const response = await fetch(`http://${HOST}:${window.port}/json/list`, {
-    redirect: "error",
-    signal: AbortSignal.timeout(5000),
-    headers: { accept: "application/json" },
-  });
+  const request: NonNullable<ExtensionManagerHooks["fetch"]> =
+    hooks.fetch ??
+    ((url) =>
+      fetch(url, {
+        redirect: "error",
+        signal: AbortSignal.timeout(5000),
+        headers: { accept: "application/json" },
+      }));
+  const connect: NonNullable<ExtensionManagerHooks["connect"]> =
+    hooks.connect ?? ((url) => CdpSession.connect(url, { timeoutMs: 5000 }));
+  const probe: NonNullable<ExtensionManagerHooks["probe"]> = hooks.probe ?? probeUiShell;
+  const evaluate: NonNullable<ExtensionManagerHooks["evaluate"]> =
+    hooks.evaluate ?? evaluateExpression;
+  const response = await request(`http://${HOST}:${window.port}/json/list`);
   const payload: unknown = response.ok ? await response.json() : null;
   if (!Array.isArray(payload)) throw new Error("指定回环端点没有返回 CDP 页面列表。");
   const targets = payload.filter(
@@ -194,15 +215,12 @@ export async function withExtensionManager<T>(
   const t = selectExtensionWindow(targets, window);
   const href = t.url as string;
   const title = t.title as string;
-  const session = await CdpSession.connect(t.webSocketDebuggerUrl as string, { timeoutMs: 5000 });
+  const session = await connect(t.webSocketDebuggerUrl as string, { timeoutMs: 5000 });
   try {
-    const shell = await probeUiShell(session);
+    const shell = await probe(session);
     if (shell.href !== href) throw new Error("编辑器窗口已切换，已停止。");
     const guard = async (): Promise<void> => {
-      const { value } = await evaluateExpression(
-        session,
-        editorIdentityExpression(window, href, title),
-      );
+      const { value } = await evaluate(session, editorIdentityExpression(window, href, title));
       if (value !== true) throw new Error("当前工程、PCB 或编辑器状态变化，已停止。");
     };
     await guard();
