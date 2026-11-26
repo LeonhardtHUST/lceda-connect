@@ -2,6 +2,10 @@
 
 本项目较重要的变更都记在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号按 [语义化版本](https://semver.org/lang/zh-CN/) 走。
 
+## 未发布
+
+- 更正 README：ChatGPT Desktop 是 Codex 桌面端的新名称，本地 MCP 配置与 Codex 相同；它不是 ChatGPT 聊天产品的自定义 MCP，也不涉及 Secure MCP Tunnel。
+
 ## [0.3.0] - 2026-11-25
 
 - 新增 `extension inspect` 离线预检，以及 Windows 嘉立创 EDA 专业版 4.1.105 中文界面的实验性安装、卸载命令；写操作须 `--confirm` 与 `--isolated-profile`，拒绝 `--headless`。

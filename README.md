@@ -58,7 +58,7 @@ codex mcp list
 codex mcp add lceda-offline -- npx -y lceda-connect mcp --toolsets offline
 ```
 
-在 Codex 桌面端也可通过 MCP 设置添加本地服务，或编辑 `~/.codex/config.toml`（自定义 `CODEX_HOME` 时使用对应目录）：
+在 Codex 桌面端（现已更名为 ChatGPT Desktop）也可通过 MCP 设置添加本地服务，或编辑 `~/.codex/config.toml`（自定义 `CODEX_HOME` 时使用对应目录）：
 
 ```toml
 [mcp_servers.lceda]
@@ -68,9 +68,11 @@ args = ["-y", "lceda-connect", "mcp", "--toolsets", "offline"]
 
 CLI 与 TOML 选一种方式配置同名服务即可。不要把 `LCEDA_BRIDGE_TOKEN` 写进项目文件。
 
-### 3. ChatGPT Desktop / ChatGPT MCP
+### 3. ChatGPT Desktop（原 Codex 桌面端）
 
-ChatGPT 的[自定义 MCP 连接](https://developers.openai.com/api/docs/guides/custom-mcp-server)不能直接启动本机 `npx`。要直接使用本地 stdio，选上面的 Codex；若你的 ChatGPT 工作区支持 [Secure MCP Tunnel](https://developers.openai.com/blog/connect-private-mcp-servers-to-openai-products)，可按 OpenAI 指南通过隧道接入。隧道不随本包提供，也不要把本机 EDA Bridge 端口当作 MCP endpoint 或直接暴露到公网。
+OpenAI 已将 Codex 桌面端更名为 ChatGPT Desktop；它是 Codex 的带界面前端，本地 MCP 的配置方式与上一节相同：在 MCP 设置中添加本地 stdio 服务，或编辑 `~/.codex/config.toml`。
+
+这里的 ChatGPT Desktop 不是 ChatGPT 聊天产品的自定义 MCP 连接，也不涉及 Secure MCP Tunnel；不要把本机 EDA Bridge 端口当作 MCP endpoint 或直接暴露到公网。
 
 ### 4. DeepSeek Harness
 
