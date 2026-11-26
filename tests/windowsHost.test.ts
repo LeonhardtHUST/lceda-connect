@@ -101,6 +101,27 @@ test("resolveWindowsMcpEntry：pnpm 全局 root 命中安装入口", () => {
   expect(entry?.source).toContain("C:\\pnpm\\global");
 });
 
+test("resolveWindowsMcpEntry：兼容 pnpm v11 的 hash 全局布局", () => {
+  const entry = resolveWindowsMcpEntry(
+    {},
+    probes({
+      exists: (file) =>
+        file === "/mnt/c/pnpm/global/v11/b384-hash/node_modules/lceda-connect/dist/cli-mcp.mjs",
+      listDir: (dir) => (dir === "/mnt/c/pnpm/global/v11" ? ["b384-hash", "8130-hash"] : null),
+      runText: (command, args) => {
+        if (command === "cmd.exe" && args.join(" ") === "/d /c pnpm root -g") {
+          return "C:\\pnpm\\global\\v11";
+        }
+        if (command === "cmd.exe" && args.join(" ") === "/d /c set") return windowsSet;
+        return null;
+      },
+    }),
+  );
+  expect(entry?.winPath).toBe(
+    "C:\\pnpm\\global\\v11\\b384-hash\\node_modules\\lceda-connect\\dist\\cli-mcp.mjs",
+  );
+});
+
 test("resolveWindowsMcpEntry：显式 --script 优先，缺失返回 null", () => {
   const hit = resolveWindowsMcpEntry(
     {},

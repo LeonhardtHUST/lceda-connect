@@ -21,6 +21,8 @@ export interface InteropProbes {
   env?: NodeJS.ProcessEnv;
   runText?: (command: string, args: readonly string[], timeoutMs: number) => string | null;
   exists?: (file: string) => boolean;
+  /** 列目录（WSL 路径）；用于 pnpm v11 的 hash 布局。 */
+  listDir?: (dir: string) => string[] | null;
   interfaces?: () => NodeJS.Dict<ReturnType<typeof networkInterfaces>[string]>;
 }
 
@@ -44,6 +46,18 @@ function resolveProbes(probes: InteropProbes = {}): Required<InteropProbes> {
         }
       }),
     exists: probes.exists ?? ((file) => fs.existsSync(file)),
+    listDir:
+      probes.listDir ??
+      ((dir) => {
+        try {
+          return fs
+            .readdirSync(dir, { withFileTypes: true })
+            .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+            .map((entry) => entry.name);
+        } catch {
+          return null;
+        }
+      }),
     interfaces: probes.interfaces ?? (() => networkInterfaces()),
   };
 }
@@ -279,12 +293,25 @@ export function resolveWindowsMcpEntry(
   }
   if (env.APPDATA) roots.push(`${env.APPDATA}\\npm\\node_modules`);
   const seen = new Set<string>();
-  for (const root of roots) {
-    const entry = `${root}\\${PACKAGE_ENTRY}`;
-    if (seen.has(entry.toLowerCase())) continue;
+  const tryEntry = (entry: string, root: string): WindowsExecutable | null => {
+    if (seen.has(entry.toLowerCase())) return null;
     seen.add(entry.toLowerCase());
     const item = executableOf(entry, `全局安装（${root}）`);
-    if (item && resolved.exists(item.wslPath)) return item;
+    return item && resolved.exists(item.wslPath) ? item : null;
+  };
+  for (const root of roots) {
+    // npm / 旧 pnpm：<root>\lceda-connect\dist\...
+    const direct = tryEntry(`${root}\\${PACKAGE_ENTRY}`, root);
+    if (direct) return direct;
+    // pnpm v11 全局布局：<root>\<hash>\node_modules\lceda-connect\dist\...
+    const wslRoot = windowsPathToWslPath(root);
+    if (!wslRoot) continue;
+    for (const name of (resolved.listDir(wslRoot) ?? []).slice(0, 64)) {
+      const hashEntry = tryEntry(`${root}\\${name}\\node_modules\\${PACKAGE_ENTRY}`, root);
+      if (hashEntry) return hashEntry;
+    }
+    const nested = tryEntry(`${root}\\node_modules\\${PACKAGE_ENTRY}`, root);
+    if (nested) return nested;
   }
   return null;
 }
