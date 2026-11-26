@@ -4,7 +4,7 @@
 
 ## 未发布
 
-- 更正 README：ChatGPT Desktop 是 Codex 桌面端的新名称，本地 MCP 配置与 Codex 相同；它不是 ChatGPT 聊天产品的自定义 MCP，也不涉及 Secure MCP Tunnel。
+- README 更正桌面端名称：Codex Desktop (ChatGPT Desktop)。
 
 ## [0.3.0] - 2026-11-25
 
