@@ -1,7 +1,14 @@
+import { createServer, type Server } from "node:http";
+
 import { expect, test } from "vite-plus/test";
 
 import { detectEnvironment, liveStrategy } from "../src/core/environment.ts";
-import { checkEnvironment, type EnvironmentReport } from "../src/eda/channels.ts";
+import {
+  checkEnvironment,
+  identifyCdpApplication,
+  probeCdpChannel,
+  type EnvironmentReport,
+} from "../src/eda/channels.ts";
 
 const missingBridge = async () => ({
   id: "bridge-probe",
@@ -121,6 +128,81 @@ test("同 OS 双通道可用：ready，并带环境与客户端路径块", async
     path: "C:\\Program Files\\lceda-pro\\lceda-pro.exe",
   });
   expect(report.next_action).toContain("两条通道");
+});
+
+test("CDP 应用识别：EasyEDA 标题/URL 命中，思源笔记判为 wrong_application", async () => {
+  expect(identifyCdpApplication([{ title: "工作空间 - 思源笔记", url: "file:///app" }])).toEqual({
+    match: false,
+    sample: "工作空间 - 思源笔记",
+  });
+  expect(
+    identifyCdpApplication([{ title: "blink | 嘉立创EDA(专业版)", url: "https://client/editor" }]),
+  ).toMatchObject({ match: true });
+  expect(identifyCdpApplication([])).toBeNull();
+
+  const startFake = async (titles: string[]): Promise<{ server: Server; port: number }> => {
+    const server = createServer((request, response) => {
+      if (request.url === "/json/version") {
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            Browser: "Chrome/158.0.0.0",
+            "Protocol-Version": "1.3",
+            webSocketDebuggerUrl: "ws://127.0.0.1/devtools/browser/fake",
+          }),
+        );
+        return;
+      }
+      if (request.url === "/json/list") {
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify(
+            titles.map((title, index) => ({
+              id: String(index),
+              type: "page",
+              title,
+              url: "file:///app",
+            })),
+          ),
+        );
+        return;
+      }
+      response.statusCode = 404;
+      response.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+    return { server, port };
+  };
+
+  const fakeSiYuan = await startFake(["工作空间 - 思源笔记"]);
+  try {
+    const check = await probeCdpChannel({
+      host: "127.0.0.1",
+      port: fakeSiYuan.port,
+      env: {},
+      timeoutMs: 800,
+    });
+    expect(check.status).toBe("partial");
+    expect(check.reason_code).toBe("wrong_application");
+    expect(check.detail).toContain("思源笔记");
+  } finally {
+    await new Promise<void>((resolve) => fakeSiYuan.server.close(() => resolve()));
+  }
+
+  const fakeEda = await startFake(["blink | 嘉立创EDA(专业版)"]);
+  try {
+    const check = await probeCdpChannel({
+      host: "127.0.0.1",
+      port: fakeEda.port,
+      env: {},
+      timeoutMs: 800,
+    });
+    expect(check.status).toBe("ready");
+  } finally {
+    await new Promise<void>((resolve) => fakeEda.server.close(() => resolve()));
+  }
 });
 
 test("不传环境时保持旧口径：只探测回环", async () => {

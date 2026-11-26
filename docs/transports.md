@@ -123,6 +123,14 @@ WSL 的 MCP 客户端按标准 stdio 配置，但让 MCP 进程实际跑在 Wind
 }
 ```
 
+想让 MCP 启动时顺带确保 EasyEDA 带调试端口运行，加 `--start-client`（`--port` 指定调试端口）：
+
+```bash
+npx lceda-connect mcp host --start-client --port 9333
+```
+
+它委托 Windows 侧 `lceda-cdp status/start`：客户端已在目标端口 → 直接复用；已在别的端口或没有调试端口 → **报错并提示手动退出，绝不杀进程**（未保存工程不会被自动关闭）。启动后最多等 45 秒端点就绪，避免超过 MCP 客户端 60 秒初始化上限。
+
 `mcp host` 会：
 
 1. 找到 Windows 的 `node.exe`（`LCEDA_WINDOWS_NODE` > `where node.exe` > 常见安装位置）；
@@ -137,6 +145,14 @@ npx lceda-connect mcp host --script 'D:\tools\lceda-connect\dist\cli-mcp.mjs'
 ```
 
 ### 2.2 直接写 Windows 命令
+
+### 2.4 自动启动客户端（可选）
+
+```bash
+npx lceda-connect mcp host --start-client --port 9333
+```
+
+安全边界：只启动，不结束任何用户进程；若 EasyEDA 已在运行但没有调试端口（或端口不一致），命令直接失败并提示先保存、退出客户端。这是刻意设计，避免自动化误关未保存工程。
 
 `mcp host --print-config` 会先打印环境翻译告警（如被移除的 `/root`、`/tmp` 路径），再输出可粘贴的配置，等价于直接指定：
 

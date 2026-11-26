@@ -10,6 +10,7 @@ import {
   browserUuid,
   defaultPortFromEnv,
   discover as discoverCdp,
+  fetchJson,
   versionBrowser,
   type DiscoverOutput,
 } from "../cdp/discover.ts";
@@ -204,6 +205,7 @@ function cdpCheckFromOutput(output: DiscoverOutput, host: string): ChannelCheck 
     reason_code: "ok",
     detail: `${host}:${best.port} · ${browser || "unknown"}`,
     hint: "",
+    port: best.port,
     version: {
       browser: browser || null,
       protocol:
@@ -215,6 +217,59 @@ function cdpCheckFromOutput(output: DiscoverOutput, host: string): ChannelCheck 
       uuid: browserUuid(best.version) || null,
     },
   };
+}
+
+export interface CdpApplicationInfo {
+  match: boolean;
+  sample: string;
+}
+
+const EASYEDA_TARGET_MARKERS = [
+  /嘉立创\s*EDA/i,
+  /EasyEDA/i,
+  /easyeda/i,
+  /pro\.lceda\.cn/i,
+  /client\/editor/i,
+];
+
+/**
+ * 判断 CDP 端口背后是不是嘉立创 EDA。
+ * `/json/version` 只能证明“这是 Chromium”，任何 Electron 应用都满足；要看 target 标题/URL。
+ * 目标列表为空时返回 null（应用刚启动、还没建页面，不做判断）。
+ */
+export function identifyCdpApplication(targets: unknown): CdpApplicationInfo | null {
+  if (!Array.isArray(targets)) return null;
+  const pages = targets.filter(
+    (item): item is Record<string, unknown> => item !== null && typeof item === "object",
+  );
+  if (pages.length === 0) return null;
+  for (const page of pages) {
+    const title = typeof page.title === "string" ? page.title : "";
+    const url = typeof page.url === "string" ? page.url : "";
+    const text = `${title} ${url}`;
+    if (EASYEDA_TARGET_MARKERS.some((marker) => marker.test(text))) {
+      return { match: true, sample: title || url };
+    }
+  }
+  const first = pages[0] ?? {};
+  const sample =
+    (typeof first.title === "string" && first.title) ||
+    (typeof first.url === "string" && first.url) ||
+    "(unknown target)";
+  return { match: false, sample };
+}
+
+async function probeCdpApplication(
+  host: string,
+  port: number,
+  timeoutMs: number,
+): Promise<CdpApplicationInfo | null> {
+  try {
+    const targets = await fetchJson<unknown>(host, port, "/json/list", timeoutMs);
+    return identifyCdpApplication(targets);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -239,7 +294,27 @@ export async function probeCdpChannel(options: CdpProbeOptions = {}): Promise<Ch
         allowedHosts: hosts,
       });
       const check = cdpCheckFromOutput(output, host);
-      if (check.status === "ready") return { ...check, hosts: tried };
+      if (check.status === "ready") {
+        const port = Number(check.port ?? 0);
+        if (port > 0) {
+          const app = await probeCdpApplication(
+            host,
+            port,
+            Math.min(options.timeoutMs ?? CDP_PROBE_TIMEOUT_MS, 1200),
+          );
+          if (app && !app.match) {
+            return {
+              ...check,
+              status: "partial",
+              reason_code: "wrong_application",
+              detail: `${host}:${port} · ${app.sample}`,
+              hint: "该 CDP 端口不是嘉立创EDA（可能是其它 Electron 应用）；请用 --port 指定 EDA 的调试端口，或关闭占用程序后重启客户端",
+              hosts: tried,
+            };
+          }
+        }
+        return { ...check, hosts: tried };
+      }
       last = check;
     } catch (error) {
       last = {

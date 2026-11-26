@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 
-import { buildMcpHostPlan, runMcpHost } from "../src/commands/mcpHost.ts";
+import { buildMcpHostPlan, decideClientStart, runMcpHost } from "../src/commands/mcpHost.ts";
 import { createMemoryIo } from "../src/core/io.ts";
 import type { InteropProbes } from "../src/core/windowsHost.ts";
 
@@ -107,6 +107,22 @@ test("print-config 不回填被移除的 WSL 内部路径，并把警告打到 s
   expect(config.mcpServers.lceda.env.LCEDA_CONNECT_HOME).toBeUndefined();
   expect(config.mcpServers.lceda.env.LCEDA_ALLOWED_ROOTS).toBe("D:\\work");
   expect(io.errors.join("\n")).toContain("WSL 内部路径");
+});
+
+test("start-client 决策：目标端口已在跑就跳过，不杀其它端口/无端口的客户端", () => {
+  expect(
+    decideClientStart({ instances: [1], debugFlagged: [{ pid: 1, port: 9333 }] }, 9333),
+  ).toMatchObject({ action: "skip" });
+  expect(
+    decideClientStart({ instances: [1], debugFlagged: [{ pid: 1, port: 9222 }] }, 9333),
+  ).toMatchObject({ action: "error" });
+  expect(decideClientStart({ instances: [1], debugFlagged: [] }, 9333)).toMatchObject({
+    action: "error",
+  });
+  expect(decideClientStart({ instances: [], debugFlagged: [] }, 9333)).toMatchObject({
+    action: "start",
+  });
+  expect(decideClientStart(null, 9333)).toMatchObject({ action: "start" });
 });
 
 test("没有 Windows 安装时 print-config 也失败并报错", async () => {

@@ -52,6 +52,11 @@ export const MCP_OPTIONS: readonly OptionSpec[] = [
     type: "boolean",
     description: "host 动作：只打印可直接粘贴的 stdio 客户端配置",
   },
+  {
+    name: "start-client",
+    type: "boolean",
+    description: "host 动作：启动 MCP 前通过 Windows 侧 CLI 确保 EasyEDA 带调试端口运行",
+  },
 ];
 
 export function mcpHelp(): string[] {
@@ -229,14 +234,21 @@ export async function runMcpGroup(
     const forwardArgs: string[] = [];
     if (selected) forwardArgs.push("--toolsets", selected);
     forwardArgs.push(...extras);
+    const clientPort = numberValue(parsed, "port");
+    const hostEnv =
+      clientPort !== undefined
+        ? { ...effectiveEnv, LCEDA_CDP_PORT: String(clientPort) }
+        : effectiveEnv;
     const { runMcpHost } = await import("./mcpHost.ts");
     return await runMcpHost({
-      env: effectiveEnv,
+      env: hostEnv,
       io,
       forwardArgs,
       nodePath: stringValue(parsed, "node"),
       scriptPath: stringValue(parsed, "script"),
       printConfig: boolValue(parsed, "print-config"),
+      startClient: boolValue(parsed, "start-client"),
+      clientPort,
     });
   }
 

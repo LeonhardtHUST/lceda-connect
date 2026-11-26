@@ -52,6 +52,9 @@ MCP 进程和 EasyEDA 是否在同一网络命名空间，决定在线工具能�
 // A. WSL 客户端 + stdio，MCP 实际跑在 Windows（推荐，live 工具直接可用）
 { "command": "npx", "args": ["-y", "lceda-connect", "mcp", "host"] }
 
+// A2. 顺带确保 EasyEDA 在 9333 上带调试端口运行（不杀已有进程）
+{ "command": "npx", "args": ["-y", "lceda-connect", "mcp", "host", "--start-client", "--port", "9333"] }
+
 // B. Windows 常驻 Streamable HTTP，WSL 客户端连虚拟网卡地址
 //    先在 Windows 执行：lceda-mcp http --host wsl --port 3939 --token my-secret
 { "type": "http", "url": "http://<宿主WSL网卡IP>:3939/mcp",
