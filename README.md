@@ -13,7 +13,8 @@
 | `epro2`     | 离线解析 `.epro2` 工程：双侧网表、PCB 几何、一致性报告、两版对比                                    |
 | `eprj3`     | 读取与校验 `.eprj3` 文件夹工程、导出网表，调用建工程与门禁脚本                                      |
 | `sim`       | ngspice 仿真：网表生成、运行、raw 解析、指标、叠层估算、Touchstone                                  |
-| `mcp`       | 以 stdio 运行 MCP 服务；扩展安装和卸载仅在 CLI 提供                                                 |
+| `mcp`       | 以 stdio / Streamable HTTP 运行 MCP；`mcp host` 可在 WSL 里拉起 Windows 侧实例                      |
+| `env`       | 执行环境自检：环境判定、客户端可执行文件、在线通道策略与配置来源                                    |
 
 ## Quick Start
 
@@ -42,6 +43,22 @@ node dist/cli.mjs mcp tools
 ```
 
 本地构建后，也可把下方客户端配置里的 `npx` 换成 `node`，参数换成 `["<仓库绝对路径>/dist/cli.mjs", "mcp"]`。完整的 tarball 检查见[发布手册](docs/publishing.md)。
+
+### 1b. WSL2 / 跨 OS 客户端
+
+MCP 进程和 EasyEDA 是否在同一网络命名空间，决定在线工具能不能用。两种跨 OS 方式（都需要先在 Windows 侧 `pnpm add -g lceda-connect` 或 `npm i -g lceda-connect`）：
+
+```jsonc
+// A. WSL 客户端 + stdio，MCP 实际跑在 Windows（推荐，live 工具直接可用）
+{ "command": "npx", "args": ["-y", "lceda-connect", "mcp", "host"] }
+
+// B. Windows 常驻 Streamable HTTP，WSL 客户端连虚拟网卡地址
+//    先在 Windows 执行：lceda-mcp http --host wsl --port 3939 --token my-secret
+{ "type": "http", "url": "http://<宿主WSL网卡IP>:3939/mcp",
+  "headers": { "Authorization": "Bearer my-secret" } }
+```
+
+`mcp host --print-config` 会打印可直接粘贴的配置。实测边界：Windows 上只绑 `127.0.0.1` 的服务，WSL NAT 里**连不上**（即使走宿主 IP）；跨 OS 必须绑 WSL 虚拟网卡地址或 `0.0.0.0`（后者暴露 LAN，不推荐）。细节与实测数据见 [docs/transports.md](docs/transports.md)。
 
 ### 2. Codex
 
@@ -140,7 +157,25 @@ claude mcp add --scope project --transport stdio lceda -- npx -y lceda-connect m
 - 随包发布的 SKILL.md 与 references 以 `lceda://skills/{+path}` 资源模板提供，也可用 `skill_docs` 工具读取。
 - 写路径只允许在客户端声明的 roots、`LCEDA_ALLOWED_ROOTS` 和默认根（当前目录、系统临时目录、connect home）之内，越界报 `PATH_NOT_ALLOWED`。读路径不受限制。
 - 支持请求取消（报 `CANCELLED`）；`sim_run`、`eprj3_gates` 等长任务会发送进度通知。
+- 传输模式：stdio（默认）、Streamable HTTP（`lceda-mcp http --host 127.0.0.1 --port 3939`，默认只绑回环）、WSL→Windows stdio（`lceda-connect mcp host`）。HTTP 支持 Bearer token、`/health` 与 `--stateless`；详见 [docs/transports.md](docs/transports.md)。
 - 工具集可裁剪：`lceda-connect mcp --toolsets offline,eda`，或设置 `LCEDA_TOOLSETS`。可选 `core` / `offline` / `live`，以及 `cdp`、`bridge`、`eda`、`api`、`format`、`epro2`、`eprj3`、`sim`；`core` 总是保留。
+
+## 执行环境（Windows / WSL2 / Linux / macOS）
+
+在线工具（CDP、bridge）要求 MCP 与客户端在同一个网络命名空间。工具启动时只读地判定环境，并据此决定探测地址与失败的下一步：
+
+```bash
+lceda-connect env            # 环境、客户端路径、通道策略、配置来源
+lceda-connect env --json     # 给脚本；含证据与 warnings
+```
+
+- 环境：`windows-native` / `wsl2` / `linux-native` / `macos-native`。默认自动发现；`--env wsl2` 等显式值会跳过发现。
+- WSL2 再区分客户端在 Windows 宿主（`host`，默认）还是 WSL 虚拟机（`vm`），`--lceda-in vm,host` 的顺序就是优先级。
+- 客户端路径自动发现：Windows 注册的安装目录与 PATH；WSL2 + host 会扫描 `/mnt/<盘>/...`，也可直接传 Windows 路径（自动转换）。显式 `--exe` 找不到时不会悄悄回退。
+- 配置优先级：**显式参数 > 配置文件 > `.env` > 环境变量 > 默认**。`--config`、`--env-file` 对 MCP stdio 同样生效。
+- WSL2 NAT + 客户端在宿主：bridge 与 Windows 回环不互通，会报 `cross_os_loopback`。推荐在 Windows 侧运行 MCP，或启用 WSL mirrored 网络，或把客户端装进 WSL VM。`cdp start` 在该组合下直接退出码 2，不会空等 60 秒。
+
+完整模型、配置文件 schema、策略矩阵与排查表见 [docs/environments.md](docs/environments.md)。
 
 ## 离线 API 文档与 assets
 
@@ -205,6 +240,8 @@ lceda-bridge logs --follow
 lceda-cdp stop --yes
 lceda-bridge stop
 ```
+
+在 WSL2 里运行 MCP 时，先看 [执行环境](docs/environments.md)：客户端默认在 Windows 宿主，`bridge` 跨命名空间不可达，推荐把 MCP 放到 Windows 侧运行。
 
 ## 命令参考
 
@@ -283,18 +320,25 @@ lceda-connect sim run deck.cir --mode tran --out ./sim-out
 
 ## 环境变量
 
-| 变量                   | 作用                                          | 默认值                                     |
-| ---------------------- | --------------------------------------------- | ------------------------------------------ |
-| `LCEDA_PRO_EXE`        | 客户端主程序路径                              | `D:\Program Files\lceda-pro\lceda-pro.exe` |
-| `LCEDA_CDP_PORT`       | CDP 调试端口                                  | `9222`                                     |
-| `LCEDA_CONNECT_HOME`   | CDP 运行态根目录                              | `~/.lceda-connect`                         |
-| `LCEDA_NODE`           | 指定 node.exe，跳过自动探测                   | 自动探测                                   |
-| `LCEDA_BRIDGE_SCRIPT`  | 指定 `bridge-server.mjs`                      | 自动探测                                   |
-| `LCEDA_BRIDGE_RUNTIME` | bridge 运行态目录                             | `%LOCALAPPDATA%\lceda-bridge`              |
-| `EASYEDA_CDP_TIMEOUT`  | CDP 单次调用超时（秒）                        | `20`                                       |
-| `NGSPICE_BIN`          | ngspice 可执行文件                            | 自动探测                                   |
-| `LCEDA_PYTHON`         | sidecar 使用的 Python                         | 自动探测                                   |
-| `LCEDA_CONNECT_ASSETS` | 覆盖 assets 目录（可指向自备的 API 文档数据） | 包内 `assets/`                             |
+| 变量                   | 作用                                             | 默认值                         |
+| ---------------------- | ------------------------------------------------ | ------------------------------ |
+| `LCEDA_PRO_EXE`        | 客户端主程序路径（WSL2 下可传 Windows 路径）     | 自动发现；找不到时用历史默认值 |
+| `LCEDA_ENV`            | 显式执行环境（跳过自动发现）                     | 自动发现                       |
+| `LCEDA_LEDA_IN`        | WSL2 客户端位置优先级：`host` / `vm` / `vm,host` | `host`                         |
+| `LCEDA_WINDOWS_HOST`   | WSL2 下 Windows 宿主地址                         | 默认网关                       |
+| `LCEDA_CDP_HOST`       | CDP 探测地址（覆盖环境推导）                     | 环境推导                       |
+| `LCEDA_BRIDGE_HOST`    | bridge 探测地址                                  | `127.0.0.1`                    |
+| `LCEDA_CONFIG`         | 配置文件路径（等价 `--config`）                  | 无                             |
+| `LCEDA_ENV_FILE`       | `.env` 路径（等价 `--env-file`）                 | 无                             |
+| `LCEDA_CDP_PORT`       | CDP 调试端口                                     | `9222`                         |
+| `LCEDA_CONNECT_HOME`   | CDP 运行态根目录                                 | `~/.lceda-connect`             |
+| `LCEDA_NODE`           | 指定 node.exe，跳过自动探测                      | 自动探测                       |
+| `LCEDA_BRIDGE_SCRIPT`  | 指定 `bridge-server.mjs`                         | 自动探测                       |
+| `LCEDA_BRIDGE_RUNTIME` | bridge 运行态目录                                | `%LOCALAPPDATA%\lceda-bridge`  |
+| `EASYEDA_CDP_TIMEOUT`  | CDP 单次调用超时（秒）                           | `20`                           |
+| `NGSPICE_BIN`          | ngspice 可执行文件                               | 自动探测                       |
+| `LCEDA_PYTHON`         | sidecar 使用的 Python                            | 自动探测                       |
+| `LCEDA_CONNECT_ASSETS` | 覆盖 assets 目录（可指向自备的 API 文档数据）    | 包内 `assets/`                 |
 
 bridge 与 MCP 的安全相关变量（详见「安全模型」）：
 
@@ -306,7 +350,7 @@ bridge 与 MCP 的安全相关变量（详见「安全模型」）：
 | `LCEDA_ALLOWED_ROOTS`          | MCP 额外允许写入的根目录，按系统路径分隔符分隔；`*` 不限 | 空（只用客户端 roots 与默认根） |
 | `LCEDA_TOOLSETS`               | MCP 工具集，等价 `mcp --toolsets`                        | 全部                            |
 
-优先级：命令行参数 > 环境变量 > 内置默认值。
+优先级：命令行参数 > 配置文件 > `.env`（只补未设置的键）> 环境变量 > 内置默认值。详见 [docs/environments.md](docs/environments.md#3-配置优先级)。
 
 ## 从旧脚本迁移
 
@@ -339,6 +383,8 @@ lceda-bridge start
 
 进程内省（命令行匹配）在 Windows 上通过 `Get-CimInstance Win32_Process` 获取，端口占用通过 `netstat -ano` 获取，杀进程树用 `taskkill /F /T`——都与旧脚本一致，不引入额外依赖。
 
+MCP 部分按「组装核心 + 薄传输适配层」拆分：`mcp/server.ts` 只负责工具/资源/权限组装，`mcp/transports/stdio.ts` 与 `mcp/transports/http.ts` 只搬协议字节，`commands/mcp.ts` 是参数到适配器的 composition root。新增传输（SSE/WebSocket/管道）只需要写适配器，不复制业务逻辑。详见 [架构说明](docs/architecture.md)。
+
 ## 开发
 
 ```bash
@@ -358,10 +404,11 @@ CI（GitHub Actions）在 Windows / Linux × Node 22、24 上跑 check、test、
 src/
   cli*.ts                bin 入口（lceda-connect / lceda-cdp / lceda-bridge / lceda-mcp / 内置 bridge 服务）
   main.ts                命令组分发与帮助
-  commands/              cdp 启动器、bridge 服务管理
-  core/                  配置、进程、网络探测、日志、参数解析、assets 定位
+  commands/              cdp/bridge 命令、mcp 命令编排、WSL→Windows stdio 启动
+  core/                  配置、进程、网络探测、日志、参数解析、环境/Windows 互操作、assets 定位
   extensions/            .eext 预检、扩展管理器 UI 驱动、安装/卸载编排
-  mcp/                   MCP 服务、工具注册表、结果截断
+  mcp/                   MCP 组装核心、工具注册表、结果截断
+  mcp/transports/        stdio / Streamable HTTP 薄传输适配层
   cdp/ bridge/ eda/      编辑器连接与动词
   apidocs/ format/       API 文档检索、格式校验
   epro2/ eprj3/ sim/     工程文件解析、ngspice 仿真

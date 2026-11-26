@@ -9,10 +9,17 @@ import {
 } from "./core/cliArgs.ts";
 import { loadConfig, type ConfigOverrides } from "./core/config.ts";
 import { stdIo, type Io } from "./core/io.ts";
+import {
+  GLOBAL_HELP_ROWS,
+  RuntimeConfigError,
+  resolveRuntime,
+  type RuntimeResolution,
+} from "./core/runtimeConfig.ts";
 import { hr, paint } from "./core/term.ts";
 import { packageVersion } from "./core/version.ts";
 import { runBridgeAction } from "./commands/bridge.ts";
 import { runCdpAction } from "./commands/cdp.ts";
+import { runMcpGroup } from "./commands/mcp.ts";
 import type { BridgeAction, CdpAction, CommandContext } from "./commands/types.ts";
 
 export const CDP_ACTIONS: readonly CdpAction[] = ["start", "ensure", "status", "endpoint", "stop"];
@@ -103,7 +110,7 @@ export function globalHelp(): string[] {
     paint.white("  命令组:"),
     "    cdp        带 CDP 调试端口启动 / 管理立创EDA专业版",
     "    bridge     EasyEDA AI Bridge 服务管理",
-    "    mcp        以 stdio 运行 MCP 服务 / 列出工具",
+    "    mcp        stdio / Streamable HTTP 服务、WSL→Windows 启动与工具清单",
     ...DOMAIN_GROUPS.map((g) => `    ${g.name.padEnd(10)} ${g.summary}`),
     "",
     paint.white("  等价写法:"),
@@ -120,6 +127,7 @@ export function globalHelp(): string[] {
     paint.white("  全局选项:"),
     "    --version, -v           打印版本",
     "    --help, -h              打印帮助",
+    ...GLOBAL_HELP_ROWS.map((row) => `    ${row.flag.padEnd(24)} ${row.description}`),
     "",
   ];
 }
@@ -195,6 +203,7 @@ export type DomainRunner = (
   argv: readonly string[],
   io: Io,
   env: NodeJS.ProcessEnv,
+  runtime?: RuntimeResolution,
 ) => Promise<number>;
 
 export interface DomainGroup {
@@ -208,6 +217,12 @@ export interface DomainGroup {
  * 启动时把所有领域模块都读进来。
  */
 export const DOMAIN_GROUPS: readonly DomainGroup[] = [
+  {
+    name: "env",
+    summary:
+      "执行环境、客户端路径与在线通道策略自检（auto / windows-native / wsl2 / linux / macos）",
+    load: async () => (await import("./commands/environment.ts")).runEnvironmentCommand,
+  },
   {
     name: "extension",
     summary: "预检 .eext；在隔离的可见客户端安装、卸载扩展（实验性，仅 CLI）",
@@ -259,87 +274,25 @@ export const CDP_CLIENT_ACTIONS: readonly string[] = [
 /** bridge 命令组里由 bridge 客户端（src/bridge）处理的动作，其余仍归服务管理。 */
 export const BRIDGE_CLIENT_ACTIONS: readonly string[] = ["windows", "select", "exec"];
 
-export function mcpHelp(): string[] {
-  return [
-    "",
-    paint.cyan("  lceda-connect mcp  --  MCP 服务（stdio）"),
-    paint.gray(`  ${hr()}`),
-    "  用法: lceda-connect mcp [动作]     （也可直接用 lceda-mcp）",
-    "",
-    paint.white("  动作:"),
-    "    serve      以 stdio 运行 MCP 服务（默认动作，给 MCP 客户端调用）",
-    "    tools      列出全部 MCP 工具名与说明",
-    "",
-    paint.white("  选项:"),
-    "    --toolsets N  选择 core/offline/live 或逗号分隔的领域（默认全部）",
-    "",
-    paint.white("  MCP 客户端配置示例:"),
-    '    { "command": "npx", "args": ["-y", "lceda-connect", "mcp"] }',
-    "",
-  ];
-}
+/** 命令组 token 集合：用来定位全局选项与组内同名选项的分界。 */
+const COMMAND_GROUP_TOKENS: ReadonlySet<string> = new Set([
+  ...DOMAIN_GROUPS.map((group) => group.name),
+  "mcp",
+  "cdp",
+  "bridge",
+]);
 
-async function runMcpGroup(
-  argv: readonly string[],
-  io: Io,
-  env: NodeJS.ProcessEnv,
-): Promise<number> {
-  const positional: string[] = [];
-  let toolsets: string | undefined;
+function findGroupIndex(argv: readonly string[]): number {
   for (let index = 0; index < argv.length; index++) {
     const token = argv[index] ?? "";
-    if (token === "--toolsets") {
-      const value = argv[++index];
-      if (!value || value.startsWith("-")) {
-        io.err(paint.red("  --toolsets 需要一个逗号分隔的值"));
-        return 1;
-      }
-      toolsets = value;
-      continue;
-    }
-    if (token.startsWith("--toolsets=")) {
-      const value = token.slice("--toolsets=".length).trim();
-      if (!value) {
-        io.err(paint.red("  --toolsets 需要一个逗号分隔的值"));
-        return 1;
-      }
-      toolsets = value;
-      continue;
-    }
-    positional.push(token);
-  }
-
-  const action = (positional[0] ?? "serve").trim().toLowerCase();
-  if (action === "help" || action === "--help" || action === "-h") {
-    print(io, mcpHelp());
-    return 0;
-  }
-  const selected = toolsets ?? env.LCEDA_TOOLSETS;
-  if (action === "tools") {
-    const { toolsForEnv } = await import("./mcp/registry.ts");
-    try {
-      for (const tool of toolsForEnv(env, selected)) {
-        io.out(`${paint.cyan(tool.name.padEnd(28))} ${tool.description.split("。")[0] ?? ""}`);
-      }
-      return 0;
-    } catch (error) {
-      io.err(paint.red(error instanceof Error ? error.message : String(error)));
-      return 1;
+    if (COMMAND_GROUP_TOKENS.has(token)) return index;
+    // 跳过全局选项的取值，避免把 `--config sim` 里的路径误当成命令组 token。
+    if (token.startsWith("--") && !token.includes("=")) {
+      const name = token.slice(2).toLowerCase();
+      if (GLOBAL_HELP_ROWS.some((row) => row.flag.startsWith(`--${name} `))) index += 1;
     }
   }
-  if (action === "serve") {
-    const { serveStdio } = await import("./mcp/server.ts");
-    try {
-      await serveStdio(env, selected);
-      return 0;
-    } catch (error) {
-      io.err(paint.red(error instanceof Error ? error.message : String(error)));
-      return 1;
-    }
-  }
-  io.err(paint.red(`  不认识的命令: ${action}`));
-  print(io, mcpHelp());
-  return 1;
+  return -1;
 }
 
 export interface MainOptions {
@@ -359,26 +312,51 @@ function print(io: Io, lines: readonly string[]): void {
  */
 export async function main(options: MainOptions): Promise<number> {
   const io = options.io ?? stdIo;
-  const env = options.env ?? process.env;
-  const argv = [...options.argv];
+  const rawArgv = [...options.argv];
 
-  if (argv.includes("--version") || argv.includes("-v") || argv.includes("-version")) {
+  if (rawArgv.includes("--version") || rawArgv.includes("-v") || rawArgv.includes("-version")) {
     io.out(`lceda-connect v${packageVersion()}`);
     return 0;
   }
+
+  const groupIndex = findGroupIndex(rawArgv);
+  const groupToken = groupIndex >= 0 ? rawArgv[groupIndex] : options.defaultGroup;
+  // 目前只有 sim 自己消费 --config（sim_config.json），其余组的全局 --config 保持连接器配置语义。
+  const localOptions = groupToken === "sim" ? ["config"] : [];
+
+  let runtime: RuntimeResolution;
+  try {
+    runtime = resolveRuntime({
+      argv: rawArgv,
+      env: options.env ?? process.env,
+      global: { groupIndex: groupIndex >= 0 ? groupIndex : 0, localOptions },
+    });
+  } catch (error) {
+    if (error instanceof RuntimeConfigError) {
+      io.err(paint.red(`  ${error.message}`));
+      return 1;
+    }
+    throw error;
+  }
+  const env = runtime.env;
+  const argv = runtime.argv;
 
   const [first, ...rest] = argv;
   const isHelpFlag = (token: string | undefined): boolean =>
     token === "--help" || token === "-h" || token === "-help" || token === "help";
 
   if (first === "mcp") {
-    return await runMcpGroup(rest, io, env);
+    return await runMcpGroup(rest, io, env, runtime);
   }
 
-  const domain = DOMAIN_GROUPS.find((g) => g.name === first);
+  // defaultGroup bin（lceda-cdp / lceda-bridge）不认识 env 命令组：把 `lceda-bridge env`
+  // 留给 bridge 自己的 env→doctor 别名，避免静默改变已发布 bin 的行为。
+  const domain = DOMAIN_GROUPS.find(
+    (group) => group.name === first && !(options.defaultGroup && group.name === "env"),
+  );
   if (domain) {
     const run = await domain.load();
-    return await run(rest, io, env);
+    return await run(rest, io, env, runtime);
   }
 
   let group: "cdp" | "bridge";

@@ -11,6 +11,7 @@ import {
   type ParsedArgs,
 } from "../core/cliArgs.ts";
 import { loadConfig } from "../core/config.ts";
+import { describeEnvironment, liveStrategy, type EnvironmentInfo } from "../core/environment.ts";
 import type { Io } from "../core/io.ts";
 import { hr, paint } from "../core/term.ts";
 import { capabilitySummary, lookupCapability } from "./capabilities.ts";
@@ -153,6 +154,9 @@ function contextOf(parsed: ParsedArgs, env: NodeJS.ProcessEnv): ExecContext {
   return createDefaultExecContext({
     env,
     cdpPort: cfg.cdp.port,
+    cdpHosts: cfg.cdp.hosts,
+    bridgeHost: cfg.bridge.host,
+    allowedHosts: cfg.cdp.hosts,
     bridgePortFirst: cfg.bridge.portFirst,
     bridgePortLast: cfg.bridge.portLast,
     match: stringValue(parsed, "match"),
@@ -178,6 +182,9 @@ function printAttempts(
 }
 
 function printStatus(io: Io, report: EnvironmentReport): void {
+  if (report.environment) {
+    io.out(`  环境: ${describeEnvironment(report.environment as EnvironmentInfo)}`);
+  }
   io.out(`  状态: ${report.status}（${report.channel_state}）`);
   for (const check of report.checks) {
     const mark = check.status === "ready" ? "OK  " : check.status === "partial" ? "PART" : "MISS";
@@ -186,6 +193,7 @@ function printStatus(io: Io, report: EnvironmentReport): void {
     if (check.hint) io.out(paint.gray(`         ${check.hint}`));
   }
   for (const note of report.functional_degradations) io.out(paint.gray(`  降级: ${note}`));
+  if (report.live_strategy?.summary) io.out(paint.gray(`  策略: ${report.live_strategy.summary}`));
   io.out(`  下一步: ${report.next_action}`);
 }
 
@@ -271,7 +279,16 @@ function printRoutePlan(io: Io, nets: readonly string[]): void {
 // ─── 动作 ─────────────────────────────────────────────────────────────
 
 async function runStatus(io: Io, parsed: ParsedArgs, env: NodeJS.ProcessEnv): Promise<number> {
-  const report = await checkEnvironment({ env });
+  const cfg = loadConfig(env);
+  const strategy = liveStrategy(cfg.environment);
+  const report = await checkEnvironment({
+    env,
+    environment: cfg.environment,
+    strategy,
+    clientExe: cfg.client.exe,
+    cdpHosts: cfg.cdp.hosts,
+    bridgeHost: cfg.bridge.host,
+  });
   if (boolValue(parsed, "json")) {
     printJson(io, { ...report, capability_map: capabilitySummary() });
   } else {

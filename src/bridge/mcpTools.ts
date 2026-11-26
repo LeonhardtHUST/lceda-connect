@@ -53,7 +53,7 @@ export const bridgeStatusTool = defineTool({
     const endpoint = await discover({
       portFirst,
       portLast,
-      host: ctx.cfg.bridge.bindHost,
+      host: ctx.cfg.bridge.host,
       signal: ctx.signal,
     });
     if (!endpoint) {
@@ -91,7 +91,7 @@ export const bridgeWindowsTool = defineTool({
       const endpoint = await discover({
         portFirst,
         portLast,
-        host: ctx.cfg.bridge.bindHost,
+        host: ctx.cfg.bridge.host,
         signal: ctx.signal,
       });
       if (!endpoint) {
@@ -101,7 +101,7 @@ export const bridgeWindowsTool = defineTool({
         );
       }
       const list = await windows(endpoint.port, {
-        host: ctx.cfg.bridge.bindHost,
+        host: ctx.cfg.bridge.host,
         signal: ctx.signal,
       });
       return { port: endpoint.port, ...list };
@@ -131,7 +131,7 @@ export const bridgeSelectWindowTool = defineTool({
       const endpoint = await discover({
         portFirst,
         portLast,
-        host: ctx.cfg.bridge.bindHost,
+        host: ctx.cfg.bridge.host,
         signal: ctx.signal,
       });
       if (!endpoint) {
@@ -141,7 +141,7 @@ export const bridgeSelectWindowTool = defineTool({
         );
       }
       const result = await selectWindow(endpoint.port, windowId, {
-        host: ctx.cfg.bridge.bindHost,
+        host: ctx.cfg.bridge.host,
         signal: ctx.signal,
       });
       return {
@@ -198,7 +198,7 @@ export const bridgeExecuteTool = defineTool({
       const endpoint = await discover({
         portFirst,
         portLast,
-        host: ctx.cfg.bridge.bindHost,
+        host: ctx.cfg.bridge.host,
         signal: ctx.signal,
       });
       if (!endpoint) {
@@ -207,11 +207,11 @@ export const bridgeExecuteTool = defineTool({
           `端口区间 ${portFirst}-${portLast} 里没有 ${BRIDGE_SERVICE_ID}`,
         );
       }
-      await requireConnected(endpoint.port, { host: ctx.cfg.bridge.bindHost, signal: ctx.signal });
+      await requireConnected(endpoint.port, { host: ctx.cfg.bridge.host, signal: ctx.signal });
       const result = await execute(endpoint.port, code, {
         windowId,
         timeoutMs,
-        host: ctx.cfg.bridge.bindHost,
+        host: ctx.cfg.bridge.host,
         signal: ctx.signal,
       });
       return {

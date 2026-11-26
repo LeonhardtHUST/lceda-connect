@@ -47,7 +47,10 @@
     "docs/merge-plan.md",
     "docs/extensions.md",
     "docs/publishing.md",
-    "docs/quickstart.md"
+    "docs/quickstart.md",
+    "docs/environments.md",
+    "docs/transports.md",
+    "docs/architecture.md"
   ],
   "type": "module",
   "types": "./dist/index.d.mts",

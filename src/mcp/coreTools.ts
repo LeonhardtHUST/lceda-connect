@@ -53,7 +53,7 @@ export const skillDocsTool = defineTool({
 export const infoTool = defineTool({
   name: "lceda_info",
   description:
-    "返回 lceda-connect 的版本、assets 位置与已注册的工具清单，用来确认 MCP 服务是否就绪。",
+    "返回 lceda-connect 的版本、assets 位置、执行环境与已注册的工具清单，用来确认 MCP 服务是否就绪。",
   input: {},
   output: {
     name: z.string(),
@@ -63,6 +63,27 @@ export const infoTool = defineTool({
     node: z.string(),
     tools: z.array(z.string()),
     toolsets: z.record(z.string(), z.array(z.string())),
+    environment: z
+      .object({
+        kind: z.string(),
+        hostOs: z.string(),
+        distro: z.string().nullable(),
+        networkingMode: z.string(),
+        windowsHost: z.string().nullable(),
+        clientLocations: z.array(z.string()),
+        explicit: z.boolean(),
+        warnings: z.array(z.string()),
+      })
+      .optional(),
+    clientExe: z
+      .object({
+        status: z.string(),
+        path: z.string().nullable(),
+        location: z.string(),
+        source: z.string(),
+      })
+      .nullable()
+      .optional(),
   },
   annotations: { readOnlyHint: true, openWorldHint: false },
   handler: (_args, ctx) => ({
@@ -75,6 +96,24 @@ export const infoTool = defineTool({
     toolsets: Object.fromEntries(
       Object.entries(ctx.toolsets ?? {}).map(([key, names]) => [key, [...names]]),
     ),
+    environment: {
+      kind: ctx.cfg.environment.kind,
+      hostOs: ctx.cfg.environment.hostOs,
+      distro: ctx.cfg.environment.distro,
+      networkingMode: ctx.cfg.environment.networkingMode,
+      windowsHost: ctx.cfg.environment.windowsHost,
+      clientLocations: [...ctx.cfg.environment.clientLocations],
+      explicit: ctx.cfg.environment.explicit,
+      warnings: [...ctx.cfg.environment.warnings],
+    },
+    clientExe: ctx.cfg.client.exe
+      ? {
+          status: ctx.cfg.client.exe.status,
+          path: ctx.cfg.client.exe.path,
+          location: ctx.cfg.client.exe.location,
+          source: ctx.cfg.client.exe.source,
+        }
+      : null,
   }),
 });
 

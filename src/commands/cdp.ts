@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import type { CdpConfig } from "../core/config.ts";
+import type { AppConfig, CdpConfig } from "../core/config.ts";
 import { parseBrowserUuidLine } from "../cdp/discover.ts";
 import { run } from "../core/exec.ts";
 import { ensureDir, exists, listDirs, readText, removeFile, writeText } from "../core/fsx.ts";
@@ -163,6 +163,14 @@ async function resolveManagedProcess(cfg: CdpConfig): Promise<ManagedProcess | n
 }
 
 // ─── 进程列表（主实例 / 调试参数） ───────────────────────────────────
+
+/**
+ * 实际可执行的客户端路径：环境发现优先（WSL2 下是 /mnt/d/...），
+ * 找不到时才退回显式/历史路径，让报错信息保持原样。
+ */
+export function clientExecutable(cfg: AppConfig): string {
+  return cfg.client.exe?.path ?? cfg.cdp.exePath;
+}
 
 /** WMI 的 Name 带扩展名：exe 路径 → "lceda-pro.exe"。 */
 export function processNameFilter(exePath: string): string {
@@ -481,6 +489,26 @@ async function runStart(
   const { cfg, env } = ctx;
   const reporter = new Reporter(ctx.io, options.json);
 
+  // WSL2 NAT 下客户端在 Windows 宿主、MCP 在 Linux 虚拟机：能拉起进程但探测不到端点，
+  // 与其等 60 秒超时，不如直接把可执行的下一步说清楚。
+  const chosenLocation = cfg.client.exe?.location ?? cfg.environment.clientLocations[0] ?? "host";
+  if (
+    cfg.environment.kind === "wsl2" &&
+    cfg.environment.networkingMode !== "mirrored" &&
+    chosenLocation === "host"
+  ) {
+    const reason =
+      "WSL2 NAT + 客户端在 Windows 宿主：跨命名空间，CDP 端点不可达，start/ensure 无法完成握手";
+    reporter.say(reason, paint.red);
+    reporter.say(
+      "可选：① 在 Windows 侧运行 MCP（npm i -g lceda-connect）；② 启用 WSL mirrored 网络；③ 客户端装进 WSL VM 后按 --lceda-in vm 使用。",
+      paint.yellow,
+    );
+    reporter.emit({ action: label, ok: false, reason, reason_code: "CROSS_OS_LOOPBACK" });
+    return 2;
+  }
+
+  const exePath = clientExecutable(cfg);
   const managed = await resolveManagedProcess(cfg.cdp);
   if (managed) {
     reporter.say(`已经在运行（PID ${managed.pid}）。先执行 stop --yes。`, paint.yellow);
@@ -516,8 +544,8 @@ async function runStart(
     );
   }
 
-  if (!exists(cfg.cdp.exePath)) {
-    const reason = `找不到客户端主程序：${cfg.cdp.exePath}`;
+  if (!exists(exePath)) {
+    const reason = `找不到客户端主程序：${exePath}`;
     reporter.say(reason, paint.red);
     reporter.say("用 --exe 传入实际路径（或设置环境变量 LCEDA_PRO_EXE）。");
     reporter.emit({ action: label, ok: false, reason });
@@ -569,10 +597,10 @@ async function runStart(
     );
   }
 
-  reporter.say(`启动：${cfg.cdp.exePath} ${startArgs.join(" ")}`);
-  const launched = launchClient(cfg.cdp.exePath, startArgs, cfg.cdp.logFile, env);
+  reporter.say(`启动：${exePath} ${startArgs.join(" ")}`);
+  const launched = launchClient(exePath, startArgs, cfg.cdp.logFile, env);
   if (launched.pid === null) {
-    const reason = `启动失败：无法拉起 ${cfg.cdp.exePath}`;
+    const reason = `启动失败：无法拉起 ${exePath}`;
     reporter.say(reason, paint.red);
     reporter.emit({ action: label, ok: false, reason });
     return 1;
@@ -584,7 +612,7 @@ async function runStart(
     );
   }
 
-  writePidRecord(cfg.cdp.pidFile, { pid: launched.pid, exe: cfg.cdp.exePath });
+  writePidRecord(cfg.cdp.pidFile, { pid: launched.pid, exe: exePath });
 
   const activePort = await waitForActivePort(cfg.cdp, env, cfg.cdp.startWaitMs);
   if (activePort <= 0) {
@@ -613,7 +641,7 @@ async function runStart(
   let finalPid = launched.pid;
   if (live.length > 0 && !live.includes(launched.pid)) {
     finalPid = live[0];
-    writePidRecord(cfg.cdp.pidFile, { pid: finalPid, exe: cfg.cdp.exePath });
+    writePidRecord(cfg.cdp.pidFile, { pid: finalPid, exe: exePath });
     reporter.say(`pid 已校准：${launched.pid} → ${finalPid}（启动器进程已退出，实际主进程是它）`);
   }
 
@@ -624,7 +652,7 @@ async function runStart(
     action: label,
     ok: true,
     pid: finalPid,
-    exe: cfg.cdp.exePath,
+    exe: exePath,
     endpoint,
     browser: info?.Browser ?? null,
     webSocketDebuggerUrl: info?.webSocketDebuggerUrl ?? null,
@@ -695,6 +723,17 @@ async function runEnsure(options: CdpOptions, ctx: CommandContext): Promise<numb
 async function runStatus(options: CdpOptions, ctx: CommandContext): Promise<number> {
   const { cfg, env } = ctx;
   const reporter = new Reporter(ctx.io, options.json);
+  const chosenLocation = cfg.client.exe?.location ?? cfg.environment.clientLocations[0] ?? "host";
+  if (
+    cfg.environment.kind === "wsl2" &&
+    cfg.environment.networkingMode !== "mirrored" &&
+    chosenLocation === "host"
+  ) {
+    reporter.say(
+      "提示：WSL2 NAT + 客户端在 Windows 宿主，本机回环看不到端点；status/endpoint 结果只代表 WSL 侧。",
+      paint.gray,
+    );
+  }
 
   const managed = await resolveManagedProcess(cfg.cdp);
   const managedFile = readManagedPidFile(cfg.cdp);

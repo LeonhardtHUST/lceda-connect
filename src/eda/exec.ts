@@ -435,9 +435,13 @@ export class DefaultBridgeChannel implements BridgeChannel {
 
 export interface CdpChannelOptions {
   host?: string;
+  /** 按环境优先级排列的探测地址；给了就覆盖 host。 */
+  hosts?: readonly string[];
   port?: number;
   env?: NodeJS.ProcessEnv;
   defaultTimeoutMs?: number;
+  /** 允许连接的非回环地址（WSL2 宿主地址）。 */
+  allowedHosts?: readonly string[];
 }
 
 function pageCandidates(targets: readonly CdpTarget[], match: string | undefined): CdpTarget[] {
@@ -456,13 +460,20 @@ function pageCandidates(targets: readonly CdpTarget[], match: string | undefined
 
 /** CDP 适配器：逐页探测文档类型，选中匹配页后求值。 */
 export class DefaultCdpChannel implements CdpChannel {
-  private readonly host: string;
+  private readonly hosts: readonly string[];
+  private readonly allowedHosts: readonly string[];
+  private activeHost: string;
   private readonly portOption: number | undefined;
   private readonly env: NodeJS.ProcessEnv;
   private readonly defaultTimeoutMs: number | undefined;
 
   constructor(options: CdpChannelOptions = {}) {
-    this.host = options.host ?? DEFAULT_CDP_HOST;
+    this.hosts =
+      options.hosts && options.hosts.length > 0
+        ? options.hosts
+        : [options.host ?? DEFAULT_CDP_HOST];
+    this.activeHost = this.hosts[0] ?? DEFAULT_CDP_HOST;
+    this.allowedHosts = options.allowedHosts ?? this.hosts;
     this.portOption = options.port;
     this.env = options.env ?? process.env;
     this.defaultTimeoutMs = options.defaultTimeoutMs;
@@ -499,6 +510,7 @@ export class DefaultCdpChannel implements CdpChannel {
           env: this.env,
           timeoutMs: options.timeoutMs ?? this.defaultTimeoutMs,
           signal: options.signal,
+          allowedHosts: this.allowedHosts,
         });
       } catch (error) {
         if ((error as { code?: unknown })?.code === "CANCELLED") throw error;
@@ -576,27 +588,37 @@ export class DefaultCdpChannel implements CdpChannel {
 
   private async endpoint(signal?: AbortSignal): Promise<{ port: number }> {
     const port = this.portOption ?? defaultPortFromEnv(this.env);
-    try {
-      const endpoint = await resolveEndpoint(this.host, { port, env: this.env, signal });
-      if (!endpoint) {
-        throw new ChannelError(
-          "cdp",
-          "CDP_NOT_FOUND",
-          "找不到 CDP 端点：客户端需带 --remote-debugging-port 启动",
-          EXIT_NO_CHANNEL,
-        );
+    const tried: string[] = [];
+    let lastMessage = "";
+    for (const host of this.hosts) {
+      tried.push(host);
+      try {
+        const endpoint = await resolveEndpoint(host, {
+          port,
+          env: this.env,
+          signal,
+          allowedHosts: this.allowedHosts,
+        });
+        if (endpoint) {
+          this.activeHost = host;
+          return { port: endpoint.port };
+        }
+      } catch (error) {
+        if ((error as { code?: unknown })?.code === "CANCELLED") throw error;
+        lastMessage = error instanceof Error ? error.message : String(error);
       }
-      return { port: endpoint.port };
-    } catch (error) {
-      if ((error as { code?: unknown })?.code === "CANCELLED") throw error;
-      if (error instanceof ChannelError) throw error;
-      throw timeoutExitCode("cdp", error);
     }
+    throw new ChannelError(
+      "cdp",
+      "CDP_NOT_FOUND",
+      `找不到 CDP 端点：试过 ${tried.join(" → ")}${lastMessage ? `（${lastMessage}）` : ""}；客户端需带 --remote-debugging-port 启动`,
+      EXIT_NO_CHANNEL,
+    );
   }
 
   private async targets(port: number, signal?: AbortSignal): Promise<CdpTarget[]> {
     try {
-      return await listTargets(this.host, port, undefined, signal);
+      return await listTargets(this.activeHost, port, undefined, signal);
     } catch (error) {
       if ((error as { code?: unknown })?.code === "CANCELLED") throw error;
       throw timeoutExitCode("cdp", error);
@@ -607,6 +629,12 @@ export class DefaultCdpChannel implements CdpChannel {
 export interface DefaultExecContextOptions {
   env?: NodeJS.ProcessEnv;
   cdpPort?: number;
+  /** 按环境优先级排列的 CDP 探测地址。 */
+  cdpHosts?: readonly string[];
+  /** bridge 探测地址（默认回环）。 */
+  bridgeHost?: string;
+  /** 允许连接的非回环地址（缺省等于 cdpHosts）。 */
+  allowedHosts?: readonly string[];
   match?: string;
   bridgePortFirst?: number;
   bridgePortLast?: number;
@@ -621,11 +649,17 @@ export function createDefaultExecContext(options: DefaultExecContextOptions = {}
   return {
     env,
     bridge: new DefaultBridgeChannel({
+      host: options.bridgeHost,
       portFirst: options.bridgePortFirst,
       portLast: options.bridgePortLast,
       env,
     }),
-    cdp: new DefaultCdpChannel({ port: options.cdpPort, env }),
+    cdp: new DefaultCdpChannel({
+      hosts: options.cdpHosts,
+      port: options.cdpPort,
+      env,
+      allowedHosts: options.allowedHosts ?? options.cdpHosts,
+    }),
     match: options.match,
     windowId: options.windowId,
     timeoutMs: options.timeoutMs,

@@ -5,14 +5,14 @@ import {
   type ServerNotification,
 } from "@modelcontextprotocol/sdk/types.js";
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { listAssetFiles, readAssetText } from "../core/assets.ts";
 import { loadConfig } from "../core/config.ts";
 import { resolveMcpWritePath } from "../core/pathPolicy.ts";
-import { packageVersion } from "../main.ts";
-import { toolsetsForTools, toolsForEnv, type ToolsetSelection } from "./registry.ts";
+import { packageVersion } from "../core/version.ts";
+import { toolsetsForTools, toolsForEnv } from "./registry.ts";
 import { errorResult, listSavedResults, okResult, readSavedResult } from "./result.ts";
+import type { McpServerFactory, McpServerFactoryOptions } from "./transports/types.ts";
 import {
   ToolError,
   normalizeToolContext,
@@ -23,11 +23,7 @@ import {
 
 export const SERVER_NAME = "lceda-connect";
 
-export interface CreateServerOptions {
-  env?: NodeJS.ProcessEnv;
-  tools?: ToolDef[];
-  toolsets?: ToolsetSelection;
-}
+export type CreateServerOptions = McpServerFactoryOptions;
 
 function fileRootPath(uri: string): string | undefined {
   try {
@@ -206,13 +202,10 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
   return server;
 }
 
-/** 以 stdio 方式运行 MCP 服务。stdout 归协议所有，日志一律写 stderr。 */
-export async function serveStdio(
-  env: NodeJS.ProcessEnv = process.env,
-  toolsets?: ToolsetSelection,
-): Promise<void> {
-  const server = createServer({ env, toolsets });
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  process.stderr.write(`[${SERVER_NAME}] MCP 服务已在 stdio 上就绪 (v${packageVersion()})\n`);
+/**
+ * 组装工厂：传输适配器只依赖这个函数，不依赖 createServer 的细节。
+ * 每次调用必须返回独立的 McpServer（HTTP 每个 session 一个）。
+ */
+export function createServerFactory(options: CreateServerOptions = {}): McpServerFactory {
+  return () => createServer(options);
 }

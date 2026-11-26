@@ -133,28 +133,51 @@ export const cdpDiscoverTool = defineTool({
   input: {
     port: PORT_FIELD,
     scan: z.string().optional().describe("附加扫描的端口区间，形如 9200-9300（一般不需要）"),
+    host: z
+      .string()
+      .optional()
+      .describe("探测地址；默认取当前环境推导（WSL2 下通常是 Windows 宿主地址）"),
   },
   annotations: { readOnlyHint: true, openWorldHint: false },
   handler: async (args, ctx) => {
     try {
-      const output = await discover(HOST, {
+      const hosts = args.host ? [args.host] : ctx.cfg.cdp.hosts;
+      let host = hosts[0] ?? "127.0.0.1";
+      let output = await discover(host, {
         port: portArg(args, ctx),
         scan: parseScan(args.scan),
         env: ctx.env,
         signal: ctx.signal,
+        allowedHosts: ctx.cfg.cdp.hosts,
       });
+      for (const candidate of hosts.slice(1)) {
+        if (output.usable.length > 0) break;
+        host = candidate;
+        output = await discover(host, {
+          port: portArg(args, ctx),
+          scan: parseScan(args.scan),
+          env: ctx.env,
+          signal: ctx.signal,
+          allowedHosts: ctx.cfg.cdp.hosts,
+        });
+      }
       const best = output.usable[0] ?? null;
       if (!best) {
         throw new ToolError(
           "CDP_NOT_FOUND",
-          "候选端口都不响应 /json/version：不像 CDP，或端口文件已经过期。" +
+          `候选地址（${hosts.join(" → ")}）的端口都不响应 /json/version：不像 CDP，或端口文件已经过期。` +
             "请确认客户端是用 `lceda-connect cdp start` 带调试端口启动的。",
-          { livePorts: output.livePorts, results: output.results.map(discoverView) },
+          {
+            livePorts: output.livePorts,
+            hosts,
+            results: output.results.map(discoverView),
+          },
         );
       }
       return {
         found: true,
-        endpoint: endpointUrl(HOST, best.port),
+        host,
+        endpoint: endpointUrl(host, best.port),
         browser: redact(versionBrowser(best.version)) || null,
         webSocketDebuggerUrl: redact(versionWebSocketUrl(best.version)) || null,
         livePorts: output.livePorts,

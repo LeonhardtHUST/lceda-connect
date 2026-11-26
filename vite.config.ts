@@ -33,5 +33,10 @@ export default defineConfig({
   },
   test: {
     include: ["tests/**/*.test.ts"],
+    // WSL 的 /mnt（drvfs）上模块加载明显偏慢；默认 5s 会让 MCP 子进程/多实例测试假超时。
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
+    // drvfs 上并行 worker 太多会互相拖慢模块加载，反而让超时测试假失败。
+    maxWorkers: 4,
   },
 });

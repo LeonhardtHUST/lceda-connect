@@ -4,6 +4,16 @@
 
 ## 未发布
 
+- 新增 MCP Streamable HTTP 传输：`lceda-mcp http` 默认只绑 `127.0.0.1:3939/mcp`，支持 `--host wsl`（自动取 WSL 虚拟网卡地址）、`--token`（Bearer）、`--stateless`、`/health` 与配置文件 `mcp.http`。
+- 新增 `lceda-connect mcp host`：在 WSL 里以 stdio 拉起 Windows 侧 lceda-connect MCP（自动发现 Windows node 与全局安装、翻译 `/mnt` 配置路径、构造干净 Windows 环境），并提供 `--print-config` 输出可直接粘贴的客户端配置。实测 WSL 客户端握手成功，`lceda_info` 返回 `platform: win32`。
+- MCP 传输层重构：`mcp/server.ts` 只保留组装核心与 `createServerFactory`，stdio→`mcp/transports/stdio.ts`、Streamable HTTP→`mcp/transports/http.ts`，`commands/mcp.ts` 作为 CLI composition root；新增 `McpServerFactory`/`TransportStartOptions`/`TransportHandle` 契约与适配器测试，新增 [架构说明](docs/architecture.md)。
+- HTTP 传输补齐规范与安全细节：Host/Origin 校验、未知 session 404、stateless GET/DELETE 405、413 请求体上限、401 `WWW-Authenticate`、会话 30 分钟空闲回收（上限 64）；`mcp host` 支持 `--print-config` 告警、`LCEDA_ALLOWED_ROOTS` 翻译与 `PATH/Path` 兼容。
+- 实测并记录 WSL NAT 边界：Windows 侧仅绑 `127.0.0.1` 的服务从 WSL 不可达（走宿主 IP 也超时）；绑 `0.0.0.0` 或 WSL 虚拟网卡地址才可达。HTTP 默认值因此保持回环，跨 OS 需显式 `--host wsl`。
+- 新增执行环境自适应：只读自动发现 `windows-native` / `wsl2` / `linux-native` / `macos-native`，WSL2 再区分客户端在 Windows 宿主（`host`，默认）还是 WSL 虚拟机（`vm`）；`--env` 显式指定时跳过自动发现。
+- 新增客户端可执行文件自动发现：Windows 安装目录/PATH，WSL2 + host 扫描 `/mnt` 并自动转换 Windows 路径，macOS 支持 `.app` 展开；显式 `--exe` 找不到时不回退。
+- 新增配置优先级：显式参数 > 配置文件 > `.env` > 环境变量 > 默认；`--config`、`--env-file`、`--lceda-in`、`--windows-host` 对 CLI 与 MCP stdio 同时生效，`lceda env --json` 可查每项来源。
+- 在线通道探测改为按环境展开地址：WSL2 NAT + 客户端在宿主时报 `cross_os_loopback` 并给出「Windows 侧跑 MCP / mirrored / 客户端装进 VM」三条路径；`cdp start` 在该组合下直接失败而不是空等 60 秒。
+- `lceda_status` / `lceda_info` / `lceda-connect env` 增加环境、客户端路径、live strategy 与证据字段；新增 `env` 命令组。
 - README 更正桌面端名称：Codex Desktop (ChatGPT Desktop)。
 - MCP 客户端示例默认加载全部工具（含 CDP/Bridge/EDA），`--toolsets offline` 改为可选；DSH 的 args 改为逐行示例。
 

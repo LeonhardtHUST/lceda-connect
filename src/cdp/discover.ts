@@ -71,6 +71,8 @@ export interface DiscoverOptions {
   records?: readonly DevToolsPortRecord[];
   timeoutMs?: number;
   signal?: AbortSignal;
+  /** 允许连接的非回环地址（只放行当前环境推导出的宿主地址）。 */
+  allowedHosts?: readonly string[];
 }
 
 // ─── 回环地址 ────────────────────────────────────────────────────────
@@ -87,6 +89,19 @@ export function requireLoopbackHost(host: string): void {
   if (!isLoopbackHost(host)) {
     throw new CdpError("LOOPBACK_ONLY", `只允许回环地址，拒绝连接 ${host}`, { exitCode: 3 });
   }
+}
+
+/**
+ * 允许回环地址，或显式列出的「当前环境的宿主地址」（WSL2 → Windows 宿主）。
+ * 边界仍然是本机：列表只能由环境发现或用户显式配置产生，不接受任意远端主机。
+ */
+export function requireAllowedHost(host: string, allowedHosts: readonly string[] = []): void {
+  if (isLoopbackHost(host)) return;
+  const target = host.trim().toLowerCase();
+  if (allowedHosts.some((allowed) => allowed.trim().toLowerCase() === target)) return;
+  throw new CdpError("LOOPBACK_ONLY", `只允许回环地址或当前环境的宿主地址，拒绝连接 ${host}`, {
+    exitCode: 3,
+  });
 }
 
 // ─── profile 与端口文件 ──────────────────────────────────────────────
@@ -278,7 +293,7 @@ export async function discover(
   host: string = DEFAULT_CDP_HOST,
   options: DiscoverOptions = {},
 ): Promise<DiscoverOutput> {
-  requireLoopbackHost(host);
+  requireAllowedHost(host, options.allowedHosts);
 
   const records =
     options.records ??

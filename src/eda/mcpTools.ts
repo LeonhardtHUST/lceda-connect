@@ -8,6 +8,7 @@ import {
   type ToolDef,
 } from "../mcp/types.ts";
 import { capabilitySummary, lookupCapability } from "./capabilities.ts";
+import { liveStrategy } from "../core/environment.ts";
 import { checkEnvironment } from "./channels.ts";
 import { EdaVerbError, createDefaultExecContext, type ExecContext } from "./exec.ts";
 import {
@@ -53,6 +54,9 @@ function execContext(args: CommonArgs, ctx: ToolContext): ExecContext {
   return createDefaultExecContext({
     env: ctx.env,
     cdpPort: ctx.cfg.cdp.port,
+    cdpHosts: ctx.cfg.cdp.hosts,
+    bridgeHost: ctx.cfg.bridge.host,
+    allowedHosts: ctx.cfg.cdp.hosts,
     bridgePortFirst: ctx.cfg.bridge.portFirst,
     bridgePortLast: ctx.cfg.bridge.portLast,
     match: args.match,
@@ -88,15 +92,24 @@ const OUT_DIR_FIELD = z
 export const lcedaStatusTool = defineTool({
   name: "lceda_status",
   description:
-    "双通道环境自检（只读）：检查 bridge 服务与 CDP 端点，返回 channel_state 四态" +
-    "（both / bridge-only / cdp-only / none）、逐项 checks（含 reason_code 与 hint）与 next_action。" +
-    "只探测回环地址，不安装、不登录、不改配置、不启动进程。退出码口径：0 双通道 / 1 单通道 / 2 都不可用。" +
+    "双通道环境自检（只读）：先报告执行环境（windows-native / wsl2 / linux-native / macos-native、" +
+    "WSL 网络模式、客户端实例位置 host/vm、Windows 宿主地址、客户端可执行文件），再检查 bridge 服务与 CDP 端点，" +
+    "返回 channel_state 四态（both / bridge-only / cdp-only / none）、逐项 checks（含 reason_code 与 hint）、" +
+    "live_strategy 与 next_action。WSL2 NAT 下 bridge 跨命名空间不可达会报 cross_os_loopback 并给出可执行建议。" +
+    "只做探测，不安装、不登录、不改配置、不启动进程。退出码口径：0 双通道 / 1 单通道 / 2 都不可用。" +
     "结论来自实际探测，不是猜测；某条通道报告 partial 时不要把它当作可用通道继续写操作。",
   input: {},
   annotations: { readOnlyHint: true, openWorldHint: false },
   handler: async (_args, ctx) => {
     try {
-      const report = await checkEnvironment({ env: ctx.env });
+      const report = await checkEnvironment({
+        env: ctx.env,
+        environment: ctx.cfg.environment,
+        strategy: liveStrategy(ctx.cfg.environment),
+        clientExe: ctx.cfg.client.exe,
+        cdpHosts: ctx.cfg.cdp.hosts,
+        bridgeHost: ctx.cfg.bridge.host,
+      });
       return { ...report, capability_map: capabilitySummary() };
     } catch (error) {
       fail(error);

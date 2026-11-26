@@ -1,6 +1,6 @@
 import { ToolError } from "../mcp/types.ts";
 import { CdpError } from "./errors.ts";
-import { DEFAULT_CDP_PORT, requireLoopbackHost } from "./discover.ts";
+import { DEFAULT_CDP_PORT, requireAllowedHost } from "./discover.ts";
 import { WsClient } from "./wsClient.ts";
 
 export const DEFAULT_CDP_TIMEOUT_MS = 20_000;
@@ -17,6 +17,8 @@ export interface CdpSessionOptions {
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
+  /** 允许连接的非回环地址（WSL2 宿主地址）；缺省只允许回环。 */
+  allowedHosts?: readonly string[];
 }
 
 interface CdpResponse {
@@ -57,7 +59,7 @@ export class CdpSession {
       );
     }
     const host = url.hostname.replace(/^\[|\]$/g, "");
-    requireLoopbackHost(host);
+    requireAllowedHost(host, options.allowedHosts);
     const port = url.port ? Number.parseInt(url.port, 10) : DEFAULT_CDP_PORT;
     const timeoutMs = options.timeoutMs ?? cdpTimeoutMs(options.env ?? process.env);
     const ws = await WsClient.connect({
