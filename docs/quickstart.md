@@ -12,13 +12,13 @@
     "lceda": {
       "type": "stdio",
       "command": "cmd.exe",
-      "args": ["/d", "/c", "npx.cmd", "-y", "lceda-connect", "mcp", "--toolsets", "offline"]
+      "args": ["/d", "/c", "npx.cmd", "-y", "lceda-connect", "mcp"]
     }
   }
 }
 ```
 
-同样的 Command 和 Args 也可用于 Codex 或 DeepSeek Harness 的 stdio 配置。重新打开客户端后，先调用 `lceda_info`。如果仍无法找到 `npx.cmd`，可用已构建的本地代码：Command 填 `node.exe` 的绝对路径，第一个参数填 `dist/cli.mjs` 的绝对路径，后面填 `mcp`、`--toolsets` 和 `offline`。
+同样的 Command 和 Args 也可用于 Codex 或 DeepSeek Harness 的 stdio 配置。重新打开客户端后，先调用 `lceda_info`。如果仍无法找到 `npx.cmd`，可用已构建的本地代码：Command 填 `node.exe` 的绝对路径，第一个参数填 `dist/cli.mjs` 的绝对路径，后面填 `mcp`。
 
 ## DeepSeek Harness 组合配置
 
@@ -30,13 +30,16 @@ config:
     lceda:
       transport: stdio
       command: npx
-      args: ["-y", "lceda-connect", "mcp", "--toolsets", "offline"]
+      args:
+        - -y
+        - lceda-connect
+        - mcp
 ```
 
 如果使用配置型 bundle 为某个预设固定连接，可在该预设中使用 `@deepseek-ai/dsh-mcp-client`，而不是配置全局管理器。字段与已安装的 DeepSeek Harness 0.2.2-rc.3 文档核对。连接成功后工具名形如 `mcp__lceda__lceda_info`。
 
 ## 连接编辑器和固定版本
 
-`offline` 不加载 CDP、Bridge 和 EDA 编辑器工具。确认本地环境可用后，可把命令中的 `offline` 改成 `live`，并按 [Windows 连接说明](../README.md#windows连接-easyeda-pro)配置编辑器。`offline` 仍包含写盘与仿真功能，不能代替操作系统隔离或调用审批。
+默认加载全部工具（含 CDP、Bridge、EDA），需要先按 [Windows 连接说明](../README.md#windows连接-easyeda-pro)配置并运行编辑器。若只要离线工具，在 args 末尾追加 `--toolsets` 和 `offline`。`offline` 仍包含写盘与仿真功能，不能代替操作系统隔离或调用审批。
 
 团队配置可以把 `lceda-connect` 改为 `lceda-connect@0.1.0` 等已经发布的精确版本，升级时再显式改版本。不要把 Bridge token 或 npm 凭据提交到项目的 `.mcp.json`；优先使用同一用户下的 Bridge 凭据文件，或客户端支持的凭据机制。

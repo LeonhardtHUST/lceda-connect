@@ -31,7 +31,7 @@ npx -y lceda-connect mcp tools
 npx -y lceda-connect mcp
 ```
 
-stdout 只用于 MCP JSON-RPC，启动日志写入 stderr。终端等待输入是正常的；配置客户端时不必另开终端常驻。首次试用建议加上 `--toolsets offline`，先调用 `lceda_info` 验证连接；需要编辑器工具时改用 `--toolsets live` 或移除此参数。`offline` 仍包含本地写盘和仿真工具，不是沙箱。
+stdout 只用于 MCP JSON-RPC，启动日志写入 stderr。终端等待输入是正常的；配置客户端时不必另开终端常驻。默认加载全部工具（含 CDP、Bridge、EDA）；只在不需要编辑器、想减少工具数量时加 `--toolsets offline`。`offline` 仍包含本地写盘和仿真工具，不是沙箱。
 
 若要从源码构建，需要 Node.js 22.18+（22.x）、24.11+（24.x）或 26+ 及 pnpm：
 
@@ -41,7 +41,7 @@ pnpm exec vp pack
 node dist/cli.mjs mcp tools
 ```
 
-本地构建后，也可把下方客户端配置里的 `npx` 换成 `node`，参数换成 `["<仓库绝对路径>/dist/cli.mjs", "mcp", "--toolsets", "offline"]`。完整的 tarball 检查见[发布手册](docs/publishing.md)。
+本地构建后，也可把下方客户端配置里的 `npx` 换成 `node`，参数换成 `["<仓库绝对路径>/dist/cli.mjs", "mcp"]`。完整的 tarball 检查见[发布手册](docs/publishing.md)。
 
 ### 2. Codex
 
@@ -63,7 +63,7 @@ codex mcp add lceda-offline -- npx -y lceda-connect mcp --toolsets offline
 ```toml
 [mcp_servers.lceda]
 command = "npx"
-args = ["-y", "lceda-connect", "mcp", "--toolsets", "offline"]
+args = ["-y", "lceda-connect", "mcp"]
 ```
 
 CLI 与 TOML 选一种方式配置同名服务即可。不要把 `LCEDA_BRIDGE_TOKEN` 写进项目文件。
@@ -74,14 +74,25 @@ CLI 与 TOML 选一种方式配置同名服务即可。不要把 `LCEDA_BRIDGE_T
 
 ### 4. DeepSeek Harness
 
-在 DeepSeek Harness Desktop / Web 的设置中打开 MCP 管理，新增服务并填写以下字段。参数分开填，每项是一个参数：
+在 DeepSeek Harness Desktop / Web 的设置中打开 MCP 管理，新增服务：名称 `lceda`，Transport `stdio`，Command `npx`，Args 一行一个：
 
-| 字段      | 值                                                    |
-| --------- | ----------------------------------------------------- |
-| 名称      | `lceda`                                               |
-| Transport | `stdio`                                               |
-| Command   | `npx`                                                 |
-| Args      | `-y`、`lceda-connect`、`mcp`、`--toolsets`、`offline` |
+```yaml
+args:
+  - -y
+  - lceda-connect
+  - mcp
+```
+
+默认加载全部工具（含 CDP、Bridge、EDA）。只在不需要编辑器、想减少工具数量时追加：
+
+```yaml
+args:
+  - -y
+  - lceda-connect
+  - mcp
+  - --toolsets
+  - offline
+```
 
 保存后查看连接状态，并调用 `mcp__lceda__lceda_info`。如果通过组合文件配置而非界面操作，见[配置进阶](docs/quickstart.md)。
 

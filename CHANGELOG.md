@@ -5,6 +5,7 @@
 ## 未发布
 
 - README 更正桌面端名称：Codex Desktop (ChatGPT Desktop)。
+- MCP 客户端示例默认加载全部工具（含 CDP/Bridge/EDA），`--toolsets offline` 改为可选；DSH 的 args 改为逐行示例。
 
 ## [0.3.0] - 2026-11-25
 
