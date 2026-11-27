@@ -2,6 +2,10 @@
 
 本项目较重要的变更都记在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号按 [语义化版本](https://semver.org/lang/zh-CN/) 走。
 
+## [0.4.1] - 2026-11-27
+
+- 修正默认组 `env` 路由测试对 bridge 自检退出码的假设，使 0.4.x 能在 CI 上通过并发布。
+
 ## [0.4.0] - 2026-11-27
 
 - 新增 MCP Streamable HTTP 传输：`lceda-mcp http` 默认只绑 `127.0.0.1:3939/mcp`，支持 `--host wsl`（自动取 WSL 虚拟网卡地址）、`--token`（Bearer）、`--stateless`、`/health` 与配置文件 `mcp.http`。
