@@ -137,7 +137,7 @@ LCEDA_CDP_PORT=9222
 
 ### 5.1 WSL2 NAT + 客户端在宿主时的可行做法
 
-1. **在 Windows 侧运行 MCP（推荐）**：Windows 上 `npm i -g lceda-connect`，让 MCP 客户端指向 Windows 命令。此时客户端与 MCP 共享回环，所有在线工具按原生逻辑工作。WSL 里的 stdio 客户端可以让这条命令自动完成：`npx lceda-connect mcp host`；也可让 Windows 常驻 `lceda-mcp http --host wsl --token ...`，WSL 用 HTTP 连。见 [传输模式](transports.md)。
+1. **在 Windows 侧运行 MCP（推荐）**：Windows 上 `npm i -g lceda-connect`，让 MCP 客户端指向 Windows 命令。此时客户端与 MCP 共享回环，所有在线工具按原生逻辑工作。WSL 里的 stdio 客户端可以让这条命令自动完成：`npx -y lceda-connect mcp host`；也可让 Windows 常驻 `lceda-connect mcp http --host wsl --token ...`，WSL 用 HTTP 连。见 [传输模式](transports.md)。
 2. **启用 WSL mirrored 网络**：在 `%USERPROFILE%\.wslconfig` 写 `[wsl2]` / `networkingMode=mirrored`，重启 WSL 后回环重新共享。注意这会改变整体 WSL 网络行为，且需要 WSL 2.0+。
 3. **把客户端装进 WSL VM**：按 `--lceda-in vm` 使用 Linux 版客户端，回环直连。
 

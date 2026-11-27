@@ -50,16 +50,16 @@ MCP stdio 与其他子命令共用全局参数，可直接写在客户端 args �
 
 ## Streamable HTTP / WSL→Windows
 
-HTTP 模式（默认只监听 `127.0.0.1`）：
+HTTP 模式（默认只监听 `127.0.0.1`；以下为全局安装写法，未安装时加 `npx -y`）：
 
 ```bash
-lceda-mcp http --host 127.0.0.1 --port 3939
+lceda-connect mcp http --host 127.0.0.1 --port 3939
 ```
 
 跨 WSL 时在 **Windows** 侧启动并绑 WSL 虚拟网卡：
 
 ```powershell
-lceda-mcp http --host wsl --port 3939 --token my-secret
+lceda-connect mcp http --host wsl --port 3939 --token my-secret
 ```
 
 WSL 侧客户端用 `http://<宿主WSL网卡IP>:3939/mcp` 连接。只绑 `127.0.0.1` 的 Windows 服务在 WSL NAT 里不可达，别按「宿主 IP + 回环」组合排查。

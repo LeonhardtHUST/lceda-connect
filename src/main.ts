@@ -19,7 +19,7 @@ import { hr, paint } from "./core/term.ts";
 import { packageVersion } from "./core/version.ts";
 import { runBridgeAction } from "./commands/bridge.ts";
 import { runCdpAction } from "./commands/cdp.ts";
-import { runMcpGroup } from "./commands/mcp.ts";
+import { mcpHelp, runMcpGroup } from "./commands/mcp.ts";
 import type { BridgeAction, CdpAction, CommandContext } from "./commands/types.ts";
 
 export const CDP_ACTIONS: readonly CdpAction[] = ["start", "ensure", "status", "endpoint", "stop"];
@@ -107,6 +107,12 @@ export function globalHelp(): string[] {
     paint.gray(`  ${hr()}`),
     "  用法: lceda-connect <命令组> <动作> [选项]",
     "",
+    paint.white("  调用方式:"),
+    "    免安装:      npx -y lceda-connect <命令组> <动作>",
+    "    全局安装:    npm install -g lceda-connect   （或 pnpm add -g lceda-connect）",
+    "                 lceda-connect <命令组> <动作>",
+    "    别名:        lceda-cdp / lceda-bridge / lceda-mcp（仅全局安装后提供）",
+    "",
     paint.white("  命令组:"),
     "    cdp        带 CDP 调试端口启动 / 管理立创EDA专业版",
     "    bridge     EasyEDA AI Bridge 服务管理",
@@ -118,11 +124,16 @@ export function globalHelp(): string[] {
     "    lceda-bridge <动作>     等价于 lceda-connect bridge <动作>",
     "    lceda-mcp               等价于 lceda-connect mcp serve",
     "",
+    paint.white("  帮助:"),
+    "    lceda-connect help <命令组>    查看单个命令组的完整帮助",
+    "    lceda-connect <命令组> --help  同上",
+    "",
     paint.white("  例子:"),
-    "    npx lceda-connect cdp start",
-    "    npx lceda-connect bridge status --json",
-    "    npx lceda-cdp endpoint",
-    "    npx lceda-bridge logs --follow",
+    "    npx -y lceda-connect cdp start",
+    "    npx -y lceda-connect bridge status --json",
+    "    npx -y lceda-connect env",
+    "    npx -y lceda-connect mcp tools",
+    "    lceda-connect help mcp          # 全局安装后",
     "",
     paint.white("  全局选项:"),
     "    --version, -v           打印版本",
@@ -306,6 +317,95 @@ function print(io: Io, lines: readonly string[]): void {
   for (const line of lines) io.out(line);
 }
 
+async function showGroupHelp(
+  target: string | undefined,
+  io: Io,
+  env: NodeJS.ProcessEnv,
+): Promise<number> {
+  const name = (target ?? "").trim().toLowerCase();
+  if (!name) {
+    print(io, globalHelp());
+    return 0;
+  }
+  if (name === "cdp") {
+    print(io, cdpHelp());
+    return 0;
+  }
+  if (name === "bridge") {
+    print(io, bridgeHelp());
+    return 0;
+  }
+  if (name === "mcp") {
+    print(io, mcpHelp());
+    return 0;
+  }
+  const domain = DOMAIN_GROUPS.find((group) => group.name === name);
+  if (domain) {
+    const run = await domain.load();
+    return await run(["--help"], io, env);
+  }
+  io.err(paint.red(`  不认识的命令组: ${name}`));
+  print(io, globalHelp());
+  return 1;
+}
+
+/** 顶层帮助不依赖配置文件；先于 resolveRuntime 处理。 */
+async function handleEarlyHelp(
+  rawArgv: readonly string[],
+  io: Io,
+  env: NodeJS.ProcessEnv,
+  defaultGroup: "cdp" | "bridge" | undefined,
+): Promise<number | null> {
+  const first = rawArgv[0] ?? "";
+  const isHelp = first === "help" || first === "--help" || first === "-h" || first === "-help";
+  if (!isHelp) {
+    // lceda-mcp --help：bin 已经预置了 mcp 组。
+    if (first === "mcp" && rawArgv.slice(1).some((token) => token === "--help" || token === "-h")) {
+      print(io, mcpHelp());
+      return 0;
+    }
+    // `--config <missing> --help`：没有命令组时帮助优先于配置加载。
+    const helpIndex = rawArgv.findIndex(
+      (token) => token === "--help" || token === "-h" || token === "-help",
+    );
+    if (helpIndex >= 0) {
+      const idx = findGroupIndex(rawArgv);
+      if (idx === -1) {
+        print(
+          io,
+          defaultGroup ? (defaultGroup === "cdp" ? cdpHelp() : bridgeHelp()) : globalHelp(),
+        );
+        return 0;
+      }
+      if (helpIndex === idx + 1) {
+        return await showGroupHelp(rawArgv[idx], io, env);
+      }
+    }
+    return null;
+  }
+  if (defaultGroup && first !== "help") {
+    return await showGroupHelp(defaultGroup, io, env);
+  }
+  const target = first === "help" ? rawArgv[1] : undefined;
+  if (defaultGroup && first === "help" && target === undefined) {
+    return await showGroupHelp(defaultGroup, io, env);
+  }
+  return await showGroupHelp(target, io, env);
+}
+
+/** `lceda-connect <组> --help` 不依赖配置文件。 */
+async function handleGroupHelp(
+  rawArgv: readonly string[],
+  io: Io,
+  env: NodeJS.ProcessEnv,
+): Promise<number | null> {
+  const [group, second] = rawArgv;
+  const helpToken =
+    second === "--help" || second === "-h" || second === "-help" || second === "help";
+  if (!group || !helpToken || !COMMAND_GROUP_TOKENS.has(group)) return null;
+  return await showGroupHelp(group, io, env);
+}
+
 /**
  * CLI 主入口：解析命令组 / 动作 / 选项，交给对应命令实现，返回进程退出码。
  * 三种 bin（lceda-connect / lceda-cdp / lceda-bridge）共用这一份逻辑，靠 defaultGroup 区分。
@@ -318,6 +418,12 @@ export async function main(options: MainOptions): Promise<number> {
     io.out(`lceda-connect v${packageVersion()}`);
     return 0;
   }
+
+  const earlyEnv = options.env ?? process.env;
+  const earlyHelp = await handleEarlyHelp(rawArgv, io, earlyEnv, options.defaultGroup);
+  if (earlyHelp !== null) return earlyHelp;
+  const groupHelp = await handleGroupHelp(rawArgv, io, earlyEnv);
+  if (groupHelp !== null) return groupHelp;
 
   const groupIndex = findGroupIndex(rawArgv);
   const groupToken = groupIndex >= 0 ? rawArgv[groupIndex] : options.defaultGroup;

@@ -16,6 +16,19 @@
 | `mcp`       | 以 stdio / Streamable HTTP 运行 MCP；`mcp host` 可在 WSL 里拉起 Windows 侧实例                      |
 | `env`       | 执行环境自检：环境判定、客户端可执行文件、在线通道策略与配置来源                                    |
 
+## 安装与调用
+
+两种等价写法，选一种固定使用：
+
+- **免安装**：`npx -y lceda-connect <命令组> <动作>`
+- **全局安装**：`npm install -g lceda-connect`（或 `pnpm add -g lceda-connect`），之后 `lceda-connect <命令组> <动作>`
+
+全局安装同时提供 `lceda-connect`、`lceda-cdp`、`lceda-bridge`、`lceda-mcp` 四个入口；后三者分别是 `cdp`、`bridge`、`mcp serve` 的快捷方式。
+
+本文示例以 `lceda-connect` 为主体；未全局安装时在前面加 `npx -y`。MCP 客户端配置统一写 `npx -y lceda-connect mcp`，全局安装后可改成 `"command": "lceda-connect", "args": ["mcp"]`。
+
+完整帮助：`npx -y lceda-connect --help`、`npx -y lceda-connect help <命令组>`；全局安装后去掉 `npx -y`。
+
 ## Quick Start
 
 ### 1. 验证 npx 与 stdio MCP
@@ -56,7 +69,8 @@ MCP 进程和 EasyEDA 是否在同一网络命名空间，决定在线工具能�
 { "command": "npx", "args": ["-y", "lceda-connect", "mcp", "host", "--start-client", "--port", "9333"] }
 
 // B. Windows 常驻 Streamable HTTP，WSL 客户端连虚拟网卡地址
-//    先在 Windows 执行：lceda-mcp http --host wsl --port 3939 --token my-secret
+//    先在 Windows 执行：lceda-connect mcp http --host wsl --port 3939 --token my-secret
+//    （全局安装后的写法；未安装用 npx -y lceda-connect mcp http ...）
 //    只有 `mcp http` 会启动 HTTP；非回环绑定强制要求 token
 { "type": "http", "url": "http://<宿主WSL网卡IP>:3939/mcp",
   "headers": { "Authorization": "Bearer my-secret" } }
@@ -153,7 +167,7 @@ claude mcp add --scope project --transport stdio lceda -- npx -y lceda-connect m
 
 ## MCP 服务
 
-全局安装后也可以直接写 `"command": "lceda-mcp"`。不做全局安装时，等价的独立入口是 `npx --yes --package=lceda-connect -- lceda-mcp`，同样接受 `--toolsets`。工具清单用 `lceda-connect mcp tools`。接口约定：
+MCP 客户端推荐 `"command": "npx", "args": ["-y", "lceda-connect", "mcp"]`；全局安装后可改成 `"command": "lceda-connect", "args": ["mcp"]`，或使用快捷入口 `lceda-mcp`。工具清单用 `npx -y lceda-connect mcp tools`。接口约定：
 
 - 写操作（在编辑器里执行代码、自动布线、建工程、调用外部脚本）默认不执行，要传 `confirm: true`。`cdp_eval` 只放行能确认为只读的表达式（如 `getX` / `listX` 一类查询调用和普通 DOM 读取），其余都要 `confirm: true`；旧参数 `allowSideEffects` 作为弃用别名保留。
 - 返回对象的工具同时给出 `structuredContent`。
@@ -161,7 +175,7 @@ claude mcp add --scope project --transport stdio lceda -- npx -y lceda-connect m
 - 随包发布的 SKILL.md 与 references 以 `lceda://skills/{+path}` 资源模板提供，也可用 `skill_docs` 工具读取。
 - 写路径只允许在客户端声明的 roots、`LCEDA_ALLOWED_ROOTS` 和默认根（当前目录、系统临时目录、connect home）之内，越界报 `PATH_NOT_ALLOWED`。读路径不受限制。
 - 支持请求取消（报 `CANCELLED`）；`sim_run`、`eprj3_gates` 等长任务会发送进度通知。
-- 传输模式：stdio（默认）、Streamable HTTP（`lceda-mcp http --host 127.0.0.1 --port 3939`，默认只绑回环）、WSL→Windows stdio（`lceda-connect mcp host`）。HTTP 支持 Bearer token、`/health` 与 `--stateless`；详见 [docs/transports.md](docs/transports.md)。
+- 传输模式：stdio（默认）、Streamable HTTP（`lceda-connect mcp http --host 127.0.0.1 --port 3939`，默认只绑回环）、WSL→Windows stdio（`lceda-connect mcp host`）。HTTP 支持 Bearer token、`/health` 与 `--stateless`；详见 [docs/transports.md](docs/transports.md)。
 - 工具集可裁剪：`lceda-connect mcp --toolsets offline,eda`，或设置 `LCEDA_TOOLSETS`。可选 `core` / `offline` / `live`，以及 `cdp`、`bridge`、`eda`、`api`、`format`、`epro2`、`eprj3`、`sim`；`core` 总是保留。
 
 ## 执行环境（Windows / WSL2 / Linux / macOS）

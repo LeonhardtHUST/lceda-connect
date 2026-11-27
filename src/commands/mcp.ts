@@ -96,6 +96,7 @@ export function mcpHelp(): string[] {
     paint.cyan("  lceda-connect mcp  --  MCP 服务（stdio / streamable-http / WSL→Windows）"),
     paint.gray(`  ${hr()}`),
     "  用法: lceda-connect mcp [动作] [选项]     （也可直接用 lceda-mcp）",
+    "  免安装: npx -y lceda-connect mcp [动作]",
     "",
     paint.white("  动作:"),
     "    serve      以 stdio 运行 MCP 服务（默认动作，给 MCP 客户端调用）",

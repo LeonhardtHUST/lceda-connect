@@ -2,26 +2,28 @@
 
 三种使用方式共用同一套 MCP 组装（工具/资源/权限），只在传输适配层不同；分层边界见 [架构说明](architecture.md)。
 
+> **调用约定**：本文命令默认使用全局安装后的 `lceda-connect`；未全局安装时在命令前加 `npx -y`。`lceda-mcp` 是 `lceda-connect mcp serve` 的全局快捷入口，示例统一使用 `lceda-connect mcp ...`。
+
 lceda-connect 的 MCP 服务支持三种使用方式，区别在于 **MCP 进程跑在哪一侧**，这直接决定在线工具（CDP / bridge）能不能看到客户端。
 
 | 模式              | 命令                                    | MCP 进程位置                          | 适用                                    |
 | ----------------- | --------------------------------------- | ------------------------------------- | --------------------------------------- |
-| stdio             | `lceda-mcp` / `npx lceda-connect mcp`   | 调用方所在环境                        | 绝大多数本机客户端                      |
-| Streamable HTTP   | `lceda-mcp http --host wsl --port 3939` | 你启动它的环境（可放 Windows 侧常驻） | 跨 WSL/宿主、多客户端共享一个 MCP       |
-| WSL→Windows stdio | `npx lceda-connect mcp host`            | 由 WSL 进程拉起的 **Windows 侧** MCP  | WSL 里的客户端想用 Windows 客户端的回环 |
+| stdio             | `lceda-connect mcp` / `lceda-mcp`       | 调用方所在环境                        | 绝大多数本机客户端                      |
+| Streamable HTTP   | `lceda-connect mcp http --host wsl ...` | 你启动它的环境（可放 Windows 侧常驻） | 跨 WSL/宿主、多客户端共享一个 MCP       |
+| WSL→Windows stdio | `lceda-connect mcp host`                | 由 WSL 进程拉起的 **Windows 侧** MCP  | WSL 里的客户端想用 Windows 客户端的回环 |
 
 ## 1. Streamable HTTP
 
 ```bash
 # 默认：只监听 127.0.0.1:3939，端点 /mcp
-lceda-mcp http
+lceda-connect mcp http
 
 # 跨 WSL：自动取 WSL 虚拟网卡地址（Windows 侧启动时取 WSL 默认网关）
 # 非回环绑定必须带 token，否则拒绝启动
-lceda-mcp http --host wsl --port 3939 --token my-secret
+lceda-connect mcp http --host wsl --port 3939 --token my-secret
 
 # 指定端点路径 / 无状态模式
-lceda-mcp http --host 172.18.224.1 --port 3939 --path /mcp --stateless
+lceda-connect mcp http --host 172.18.224.1 --port 3939 --path /mcp --stateless
 ```
 
 选项：
@@ -98,7 +100,7 @@ MCP 客户端配置（支持 HTTP 传输的客户端）：
 HTTP 模式的价值是启动一次、WSL 与 Windows 都能连。建议在 Windows PowerShell 里：
 
 ```powershell
-lceda-mcp http --host wsl --port 3939 --token my-secret
+lceda-connect mcp http --host wsl --port 3939 --token my-secret
 ```
 
 （需要先在 Windows 安装：`pnpm add -g lceda-connect` 或 `npm i -g lceda-connect`。）
@@ -128,7 +130,7 @@ WSL 的 MCP 客户端按标准 stdio 配置，但让 MCP 进程实际跑在 Wind
 想让 MCP 启动时顺带确保 EasyEDA 带调试端口运行，加 `--start-client`（`--port` 指定调试端口）：
 
 ```bash
-npx lceda-connect mcp host --start-client --port 9333
+npx -y lceda-connect mcp host --start-client --port 9333
 ```
 
 它委托 Windows 侧 `lceda-cdp status/start`：客户端已在目标端口 → 直接复用；已在别的端口或没有调试端口 → **报错并提示手动退出，绝不杀进程**（未保存工程不会被自动关闭）。启动后最多等 45 秒端点就绪，避免超过 MCP 客户端 60 秒初始化上限。
@@ -143,7 +145,7 @@ npx lceda-connect mcp host --start-client --port 9333
 非全局安装或自定义路径：
 
 ```bash
-npx lceda-connect mcp host --script 'D:\tools\lceda-connect\dist\cli-mcp.mjs'
+npx -y lceda-connect mcp host --script 'D:\tools\lceda-connect\dist\cli-mcp.mjs'
 ```
 
 ### 2.2 直接写 Windows 命令
@@ -151,7 +153,7 @@ npx lceda-connect mcp host --script 'D:\tools\lceda-connect\dist\cli-mcp.mjs'
 ### 2.4 自动启动客户端（可选）
 
 ```bash
-npx lceda-connect mcp host --start-client --port 9333
+npx -y lceda-connect mcp host --start-client --port 9333
 ```
 
 安全边界：只启动，不结束任何用户进程；若 EasyEDA 已在运行但没有调试端口（或端口不一致），命令直接失败并提示先保存、退出客户端。这是刻意设计，避免自动化误关未保存工程。
@@ -174,7 +176,7 @@ WSL 的 `binfmt` 互操作会把这个 `/mnt/c/.../node.exe` 进程当 Windows �
 
 ### 2.3 注意
 
-- `mcp host` 只在 Linux/WSL 侧有意义；Windows 原生直接用 `lceda-mcp` 即可。
+- `mcp host` 只在 Linux/WSL 侧有意义；Windows 原生直接用 `lceda-connect mcp`（全局安装后也可用快捷入口 `lceda-mcp`）即可。
 - 当前进程里的 `/tmp/...`、`/root/...` 等纯 WSL 路径无法被 Windows 读取，会从子进程环境移除并告警；配置文件请放在 `/mnt/<盘>/...`。
 - 启动比 Linux 侧多花几秒（Windows node + 模块加载），但 MCP 会话只启动一次。
 - 结束 `mcp host` 时子进程会随信号退出；若客户端强杀进程后 Windows 侧仍有残留，用任务管理器结束对应 `node.exe`。
