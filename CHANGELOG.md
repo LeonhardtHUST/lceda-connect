@@ -2,6 +2,11 @@
 
 本项目较重要的变更都记在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号按 [语义化版本](https://semver.org/lang/zh-CN/) 走。
 
+## [0.4.2] - 2026-11-27
+
+- 统一 CLI 调用约定：文档以 `lceda-connect` 为主体，明确免安装用 `npx -y lceda-connect`、全局安装后直接 `lceda-connect`；全局安装提供 `lceda-connect` / `lceda-cdp` / `lceda-bridge` / `lceda-mcp` 四个入口。
+- 帮助输出补齐：全局帮助新增调用方式、安装命令、`help <命令组>` 与四个入口；新增 `help <命令组>` 路由，帮助优先于配置文件加载；MCP 帮助补充免安装写法。
+
 ## [0.4.1] - 2026-11-27
 
 - 修正默认组 `env` 路由测试对 bridge 自检退出码的假设，使 0.4.x 能在 CI 上通过并发布。
