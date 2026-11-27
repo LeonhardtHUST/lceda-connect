@@ -96,10 +96,11 @@ function pushCandidate(list: ExeCandidate[], seen: Set<string>, candidate: ExeCa
 /** macOS `.app` 包展开成包内可执行文件候选；不是 app 包时返回空数组。 */
 function expandMacAppBundle(value: string): string[] {
   if (!value.toLowerCase().endsWith(".app")) return [];
+  // 目标环境的路径必须用 POSIX 拼接，不能跟随运行测试的宿主平台（Windows CI 会变成反斜杠）。
   return [
-    path.join(value, "Contents", "MacOS", "lceda-pro"),
-    path.join(value, "Contents", "MacOS", "EasyEDA Pro"),
-    path.join(value, "Contents", "MacOS", "EasyEDA"),
+    path.posix.join(value, "Contents", "MacOS", "lceda-pro"),
+    path.posix.join(value, "Contents", "MacOS", "EasyEDA Pro"),
+    path.posix.join(value, "Contents", "MacOS", "EasyEDA"),
   ];
 }
 
