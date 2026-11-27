@@ -263,8 +263,10 @@ test("defaultGroup bin 的 env 不抢占 bridge 的 env→doctor 别名", async 
     io: bridgeIo,
     env: { ...process.env, LCEDA_ENV: "windows-native" },
   });
-  expect(bridgeCode).toBe(0);
+  // bridge doctor 在缺少 Windows 客户端/依赖的 CI 上可能以 1 退出；这里只验证入口没被 env 组抢走。
+  expect([0, 1]).toContain(bridgeCode);
   expect(bridgeIo.lines.join("\n")).not.toContain("执行环境");
+  expect(bridgeIo.lines.length + bridgeIo.errors.length).toBeGreaterThan(0);
 
   const envIo = createMemoryIo();
   const fakeExe = path.join(tempDir(), "lceda-pro.exe");
