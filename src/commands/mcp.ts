@@ -7,10 +7,41 @@ import {
   type OptionSpec,
 } from "../core/cliArgs.ts";
 import { loadConfig } from "../core/config.ts";
-import { describeEnvironment } from "../core/environment.ts";
+import { describeEnvironment, isLoopbackAddress } from "../core/environment.ts";
 import type { Io } from "../core/io.ts";
 import { GLOBAL_HELP_ROWS, type RuntimeResolution } from "../core/runtimeConfig.ts";
 import { hr, paint } from "../core/term.ts";
+
+const HTTP_OPTION_NAMES = ["host", "port", "path", "token", "stateless"] as const;
+const HTTP_ENV_KEYS = [
+  "LCEDA_HTTP_HOST",
+  "LCEDA_HTTP_PORT",
+  "LCEDA_HTTP_PATH",
+  "LCEDA_HTTP_TOKEN",
+  "LCEDA_HTTP_STATELESS",
+] as const;
+
+/**
+ * 找出「用户以为会启动 HTTP」的参数/环境变量。
+ * 只有 `mcp http` 会启动 HTTP；其它动作看到这些参数时只告警、绝不隐式启动。
+ */
+export function httpOptionsRequested(
+  values: Record<string, string | number | boolean>,
+  env: NodeJS.ProcessEnv,
+  action = "serve",
+): string[] {
+  // host 动作的 --port 是 EasyEDA 调试端口，不是 HTTP 端口，不计入。
+  const optionNames =
+    action === "host" ? HTTP_OPTION_NAMES.filter((name) => name !== "port") : HTTP_OPTION_NAMES;
+  const requested: string[] = [];
+  for (const name of optionNames) {
+    if (values[name] !== undefined) requested.push(`--${name}`);
+  }
+  for (const key of HTTP_ENV_KEYS) {
+    if ((env[key] ?? "") !== "") requested.push(key);
+  }
+  return requested;
+}
 
 /** `lceda-connect mcp` / `lceda-mcp` 的命令实现：只做参数解析与传输适配器选择。 */
 export const MCP_OPTIONS: readonly OptionSpec[] = [
@@ -135,6 +166,17 @@ export async function runMcpGroup(
   for (const warning of normalized.warnings) io.err(paint.yellow(`  ! ${warning}`));
   const effectiveEnv = normalized.env;
 
+  if (action !== "http") {
+    const requested = httpOptionsRequested(parsed.values, effectiveEnv, action);
+    if (requested.length > 0) {
+      io.err(
+        paint.yellow(
+          `  ! 检测到 HTTP 参数（${requested.join(", ")}），但当前动作是 ${action}；未启动 HTTP 服务。需要 HTTP 请显式运行 \`mcp http\``,
+        ),
+      );
+    }
+  }
+
   if (action === "tools") {
     const { toolsForEnv } = await import("../mcp/registry.ts");
     try {
@@ -209,6 +251,15 @@ export async function runMcpGroup(
     const stateless =
       boolValue(parsed, "stateless") ||
       (effectiveEnv.LCEDA_HTTP_STATELESS ?? "").toLowerCase() === "true";
+    const token = stringValue(parsed, "token") ?? effectiveEnv.LCEDA_HTTP_TOKEN;
+    if (!isLoopbackAddress(host) && !token) {
+      io.err(
+        paint.red(
+          "  绑定非回环地址时必须提供 Bearer token（--token / LCEDA_HTTP_TOKEN / 配置 mcp.http.token）；已拒绝启动 HTTP 服务",
+        ),
+      );
+      return 1;
+    }
     const { startHttpTransport } = await import("../mcp/transports/http.ts");
     try {
       const handle = await startHttpTransport({
@@ -217,7 +268,7 @@ export async function runMcpGroup(
         host,
         port: numberValue(parsed, "port") ?? (Number.isFinite(envPort) ? envPort : undefined),
         path: stringValue(parsed, "path") ?? effectiveEnv.LCEDA_HTTP_PATH,
-        token: stringValue(parsed, "token") ?? effectiveEnv.LCEDA_HTTP_TOKEN,
+        token,
         stateless,
       });
       io.err(paint.gray(`  按 Ctrl+C 或结束进程退出；端点 ${handle.url}`));

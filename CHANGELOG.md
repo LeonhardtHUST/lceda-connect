@@ -9,6 +9,7 @@
 - MCP 传输层重构：`mcp/server.ts` 只保留组装核心与 `createServerFactory`，stdio→`mcp/transports/stdio.ts`、Streamable HTTP→`mcp/transports/http.ts`，`commands/mcp.ts` 作为 CLI composition root；新增 `McpServerFactory`/`TransportStartOptions`/`TransportHandle` 契约与适配器测试，新增 [架构说明](docs/architecture.md)。
 - `mcp host` 新增 `--start-client`：委托 Windows 侧 `lceda-cdp status/start` 确保 EasyEDA 带调试端口运行；已在其它端口/无调试端口时只报错不杀进程，启动后轮询端点最多 45 秒。
 - `lceda_status` 增加 CDP 应用识别：端口上是其它 Electron 应用（如思源笔记）时报 `wrong_application`，避免把任意 `/json/version` 当成嘉立创EDA。
+- 安全加固：HTTP 服务只能由 `mcp http` 显式启动；其它动作即使带 `--host/--port/--token` 或 `LCEDA_HTTP_*` 也只告警不监听；非回环绑定强制要求 Bearer token（CLI 与传输层双重校验）。
 - HTTP 传输补齐规范与安全细节：Host/Origin 校验、未知 session 404、stateless GET/DELETE 405、413 请求体上限、401 `WWW-Authenticate`、会话 30 分钟空闲回收（上限 64）；`mcp host` 支持 `--print-config` 告警、`LCEDA_ALLOWED_ROOTS` 翻译与 `PATH/Path` 兼容。
 - 实测并记录 WSL NAT 边界：Windows 侧仅绑 `127.0.0.1` 的服务从 WSL 不可达（走宿主 IP 也超时）；绑 `0.0.0.0` 或 WSL 虚拟网卡地址才可达。HTTP 默认值因此保持回环，跨 OS 需显式 `--host wsl`。
 - 新增执行环境自适应：只读自动发现 `windows-native` / `wsl2` / `linux-native` / `macos-native`，WSL2 再区分客户端在 Windows 宿主（`host`，默认）还是 WSL 虚拟机（`vm`）；`--env` 显式指定时跳过自动发现。

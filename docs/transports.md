@@ -17,6 +17,7 @@ lceda-connect 的 MCP 服务支持三种使用方式，区别在于 **MCP 进程
 lceda-mcp http
 
 # 跨 WSL：自动取 WSL 虚拟网卡地址（Windows 侧启动时取 WSL 默认网关）
+# 非回环绑定必须带 token，否则拒绝启动
 lceda-mcp http --host wsl --port 3939 --token my-secret
 
 # 指定端点路径 / 无状态模式
@@ -36,8 +37,9 @@ lceda-mcp http --host 172.18.224.1 --port 3939 --path /mcp --stateless
 
 安全与规范细节：
 
+- **非回环绑定强制要求 Bearer token**（`--token` / `LCEDA_HTTP_TOKEN` / 配置 `mcp.http.token`），缺失时 CLI 与传输层双重拒绝启动；
 - Host 与 Origin 头都校验（只接受回环/绑定地址，通配绑定时只接受 IP 字面量），`/health` 同样校验 Host；
-- 可选 Bearer token（scheme 大小写不敏感；401 带 `WWW-Authenticate`）；
+- Bearer token（scheme 大小写不敏感；401 带 `WWW-Authenticate`）；
 - 未知/过期 session 返回 404，无 SSE 能力的 stateless 模式对 GET/DELETE 返回 405；
 - 请求体上限 4 MiB，超限返回 413（连接不 reset）；
 - 有状态会话 30 分钟空闲回收，最多 64 个；`/health` 的 `sessions` 可观察数量。
@@ -86,7 +88,7 @@ MCP 客户端配置（支持 HTTP 传输的客户端）：
 所以跨 WSL 使用 HTTP 时：
 
 - **推荐**：`--host wsl`（只绑 WSL 虚拟网卡，不暴露到局域网）+ `--token`；
-- 只有在明确知道风险时才用 `0.0.0.0`（会暴露到 LAN，且 MCP 本身无内建鉴权）；
+- 只有在明确知道风险时才用 `0.0.0.0`（会暴露到 LAN；已强制要求 token，但仍应优先 WSL 虚拟网卡地址）；
 - 不要指望「Windows 绑 127.0.0.1，WSL 用宿主 IP 访问」能通。
 
 `--host wsl` 的解析方式：在 Windows 上运行 `wsl.exe -e sh -lc "ip route show default"` 取默认网关（即宿主 vEthernet 地址）；在 WSL 里运行则取 `eth0` 的 IPv4。解析失败会提示直接传 `--host <IP>`。

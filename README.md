@@ -57,6 +57,7 @@ MCP 进程和 EasyEDA 是否在同一网络命名空间，决定在线工具能�
 
 // B. Windows 常驻 Streamable HTTP，WSL 客户端连虚拟网卡地址
 //    先在 Windows 执行：lceda-mcp http --host wsl --port 3939 --token my-secret
+//    只有 `mcp http` 会启动 HTTP；非回环绑定强制要求 token
 { "type": "http", "url": "http://<宿主WSL网卡IP>:3939/mcp",
   "headers": { "Authorization": "Bearer my-secret" } }
 ```

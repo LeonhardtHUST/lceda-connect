@@ -188,6 +188,12 @@ export async function startHttpTransport(
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw new Error(`HTTP 端口不合法：${port}`);
   }
+  // 防呆：非回环绑定必须有鉴权，避免一个参数失误就把 MCP 暴露到虚拟网卡/局域网。
+  if (!isLoopbackAddress(host) && !options.token) {
+    throw new Error(
+      "绑定非回环地址必须提供 Bearer token（--token / LCEDA_HTTP_TOKEN / 配置 mcp.http.token）",
+    );
+  }
   if (!isLoopbackAddress(host) && host !== "0.0.0.0" && host !== "::") {
     log(
       `[${SERVER_NAME}] 警告：HTTP MCP 绑定在非回环地址 ${host}；请仅绑定 WSL 虚拟网卡地址，并考虑加 --token`,

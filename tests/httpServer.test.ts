@@ -154,17 +154,28 @@ test("Host 头只接受回环与绑定地址", () => {
   expect(isAllowedHostHeader("evil.example:3939", "0.0.0.0")).toBe(false);
 });
 
-test("绑定非回环地址时仍可握手（模拟跨 WSL 场景）", async () => {
+test("非回环绑定缺少 token 时拒绝启动", async () => {
+  await expect(startHttpTransport({ env, host: "0.0.0.0", port: 0, log: quiet })).rejects.toThrow(
+    /token/,
+  );
+});
+
+test("绑定非回环地址时带 token 可握手（模拟跨 WSL 场景）", async () => {
   const handle = await startHttpTransport({
     env,
     toolsets: "core",
     host: "0.0.0.0",
     port: 0,
+    token: "s3cret",
     log: quiet,
   });
   try {
     const client = new Client({ name: "http-any-test", version: "0.0.0" });
-    await client.connect(new StreamableHTTPClientTransport(new URL(handle.url)));
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(handle.url), {
+        requestInit: { headers: { authorization: "Bearer s3cret" } },
+      }),
+    );
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name)).toContain("lceda_info");
     await client.close();
