@@ -222,7 +222,7 @@ bridge 能在编辑器里执行任意 `eda.*` 代码，所以默认只信任本�
 无需全局安装也能运行命令：
 
 ```bash
-npx lceda-connect cdp start
+npx -y lceda-connect cdp start
 # 或者用 vite-plus 的等价物
 vpx lceda-connect bridge status --json
 ```
